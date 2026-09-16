@@ -135,13 +135,13 @@ The Playnite desktop **Subscription Libraries** menu includes **Show active Game
 ## Cache and failure behavior
 
 - Default freshness: 24 hours, configurable from 1 to 720 hours.
-- A fresh matching market/language cache contains all plan/platform/generation memberships and avoids network traffic when switching views. Version 1.3 upgrades the cache schema, so its first sync needs network access.
+- A fresh matching market/language cache contains all plan/platform/generation memberships and avoids network traffic when switching views. Changing either Advanced catalog SIGL ID invalidates that cache and requires a new fetch. Caches written before catalog ID identity was introduced also need one new fetch, as do pre-1.3 caches with an older schema.
 - Disabling **Refresh during Playnite library update** uses the last cache; an initial fetch still occurs if no cache exists.
 - **Refresh and Apply...** forces a network refresh, shows a change preview, and applies the selected view after confirmation.
 - If Microsoft fails after a valid cache exists, the plugin logs a warning and returns the cached catalog, even when stale. A stale/fallback catalog marks this plugin's entries **Access: Catalog unverified** and cannot add, hide, restore, or delete them until verification succeeds.
 - If an ID remains in a selected collection but its current metadata is missing or unclassifiable, the last verified active record is preserved instead of falsely declaring that the game left the service.
 - Cache writes are atomic, and malformed cache files are ignored.
-- A suspicious live drop below half of a prior sizable catalog is rejected to prevent a transient upstream issue from wiping the library view.
+- A suspicious live drop below half of a prior sizable catalog, plan/platform membership, or console-generation membership is rejected to prevent a transient upstream issue from wiping the library view. A previously populated membership that suddenly becomes empty is also rejected when it contained at least five games.
 
 ## Data sources and reliability
 

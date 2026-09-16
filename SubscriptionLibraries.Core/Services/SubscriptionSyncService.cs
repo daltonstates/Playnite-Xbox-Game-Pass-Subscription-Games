@@ -21,6 +21,8 @@ public sealed class SubscriptionSyncOptions
     public bool ForceRefresh { get; set; }
 
     public bool RefreshFromNetwork { get; set; } = true;
+
+    public string? CatalogConfigurationKey { get; set; }
 }
 
 public enum SubscriptionCatalogSource
@@ -84,7 +86,8 @@ public sealed class SubscriptionSyncService
             provider.Id,
             options.Region,
             options.Language,
-            options.CacheLifetime);
+            options.CacheLifetime,
+            options.CatalogConfigurationKey);
 
         if (!options.ForceRefresh && cache is not null && (cache.IsFresh || !options.RefreshFromNetwork))
         {
@@ -184,6 +187,8 @@ public sealed class SubscriptionSyncService
                     "whose current catalog metadata was incomplete.");
             }
 
+            GuardAgainstCatastrophicMembershipDrop(provider, cache, games);
+
             var currentIds = new HashSet<string>(
                 games.Select(game => game.ProviderGameId),
                 StringComparer.OrdinalIgnoreCase);
@@ -253,6 +258,7 @@ public sealed class SubscriptionSyncService
                 ProviderId = provider.Id,
                 Region = options.Region,
                 Language = options.Language,
+                CatalogConfigurationKey = options.CatalogConfigurationKey,
                 CachedAtUtc = now,
                 ProductIds = snapshot.ProductIds
                     .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -320,12 +326,108 @@ public sealed class SubscriptionSyncService
         int currentCount)
     {
         var previousCount = cache?.Envelope.Games.Count ?? 0;
-        if (previousCount >= 20 && currentCount < previousCount / 2)
+        if (previousCount >= 20 && currentCount * 2L < previousCount)
         {
             throw new CatalogDataException(
                 $"{provider.Name} unexpectedly dropped from {previousCount} to {currentCount} games; " +
                 "the previous cache was preserved.");
         }
+    }
+
+    private static void GuardAgainstCatastrophicMembershipDrop(
+        ISubscriptionProvider provider,
+        CatalogCacheReadResult? cache,
+        IReadOnlyCollection<SubscriptionGame> games)
+    {
+        if (cache is null)
+        {
+            return;
+        }
+
+        var currentCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var game in games)
+        {
+            AddMembershipCounts(currentCounts, game);
+        }
+
+        var previousCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var game in cache.Envelope.Games)
+        {
+            AddMembershipCounts(previousCounts, game);
+        }
+
+        foreach (var previous in previousCounts)
+        {
+            currentCounts.TryGetValue(previous.Key, out var currentCount);
+            if ((previous.Value >= 20 && currentCount * 2L < previous.Value) ||
+                (previous.Value >= 5 && currentCount == 0))
+            {
+                throw new CatalogDataException(
+                    $"{provider.Name} {previous.Key} membership unexpectedly dropped " +
+                    $"from {previous.Value} to {currentCount}; the previous cache was preserved.");
+            }
+        }
+    }
+
+    private static void AddMembershipCounts(
+        Dictionary<string, int> counts, SubscriptionGame game)
+    {
+        if ((game.AccessPlatforms & SubscriptionPlatforms.WindowsPc) != 0)
+        {
+            Increment(counts, "all catalogs PC");
+        }
+        if ((game.AccessPlatforms & SubscriptionPlatforms.XboxConsole) != 0)
+        {
+            Increment(counts, "all catalogs Xbox");
+            if ((game.XboxGenerations & XboxConsoleGenerations.XboxOne) != 0)
+            {
+                Increment(counts, "all catalogs Xbox One");
+            }
+            if ((game.XboxGenerations & XboxConsoleGenerations.SeriesXorS) != 0)
+            {
+                Increment(counts, "all catalogs Xbox Series X|S");
+            }
+        }
+
+        var platformsByPlan = game.PlanPlatforms;
+        var generationsByPlan = game.PlanXboxGenerations;
+        if (platformsByPlan is null)
+        {
+            return;
+        }
+
+        foreach (var plan in platformsByPlan)
+        {
+            if ((plan.Value & SubscriptionPlatforms.WindowsPc) != 0)
+            {
+                Increment(counts, $"{plan.Key} PC");
+            }
+            if ((plan.Value & SubscriptionPlatforms.XboxConsole) == 0)
+            {
+                continue;
+            }
+
+            Increment(counts, $"{plan.Key} Xbox");
+            if (generationsByPlan is null ||
+                !generationsByPlan.TryGetValue(plan.Key, out var generations))
+            {
+                continue;
+            }
+            if ((generations & XboxConsoleGenerations.XboxOne) != 0)
+            {
+                Increment(counts, $"{plan.Key} Xbox One");
+            }
+            if ((generations & XboxConsoleGenerations.SeriesXorS) != 0)
+            {
+                Increment(counts, $"{plan.Key} Xbox Series X|S");
+            }
+        }
+    }
+
+    private static void Increment(Dictionary<string, int> counts, string key)
+    {
+        counts.TryGetValue(key, out var count);
+        counts[key] = count + 1;
     }
 
     private static void ValidateOptions(SubscriptionSyncOptions options)
@@ -397,23 +499,29 @@ public sealed class SubscriptionSyncService
         {
             game.PlanPlatforms = new Dictionary<string, SubscriptionPlatforms>(
                 StringComparer.OrdinalIgnoreCase);
-            return;
         }
-
-        game.PlanPlatforms = declaredPlans
-            .Select(pair => new KeyValuePair<string, SubscriptionPlatforms>(
-                pair.Key, pair.Value & game.AccessPlatforms))
-            .Where(pair => pair.Value != SubscriptionPlatforms.None)
-            .ToDictionary(pair => pair.Key, pair => pair.Value,
-                StringComparer.OrdinalIgnoreCase);
+        else
+        {
+            game.PlanPlatforms = declaredPlans
+                .Select(pair => new KeyValuePair<string, SubscriptionPlatforms>(
+                    pair.Key, pair.Value & game.AccessPlatforms))
+                .Where(pair => pair.Value != SubscriptionPlatforms.None)
+                .ToDictionary(pair => pair.Key, pair => pair.Value,
+                    StringComparer.OrdinalIgnoreCase);
+        }
         if (snapshot.DeclaredPlanGenerationsByProductId.TryGetValue(
                 productId, out var declaredGenerations))
         {
             game.PlanXboxGenerations = new Dictionary<string, XboxConsoleGenerations>(
                 declaredGenerations, StringComparer.OrdinalIgnoreCase);
-            game.XboxGenerations = declaredGenerations.Values.Aggregate(
-                XboxConsoleGenerations.None, (current, next) => current | next);
         }
+        else
+        {
+            game.PlanXboxGenerations = new Dictionary<string, XboxConsoleGenerations>(
+                StringComparer.OrdinalIgnoreCase);
+        }
+        game.XboxGenerations = game.PlanXboxGenerations.Values.Aggregate(
+            XboxConsoleGenerations.None, (current, next) => current | next);
     }
 
     private static bool SameLeavingMembership(SubscriptionGame previous, SubscriptionGame current)

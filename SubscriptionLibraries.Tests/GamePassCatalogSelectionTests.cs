@@ -116,6 +116,53 @@ public sealed class GamePassCatalogSelectionTests
                 GamePassConsoleSelection.SeriesXorS, game).Availability);
     }
 
+    [Fact]
+    public void AllCatalogsLeavingSoonStatusUsesSelectedPlatform()
+    {
+        var game = new SubscriptionGame
+        {
+            Availability = SubscriptionAvailability.LeavingSoon,
+            AccessPlatforms = SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole,
+            LeavingSoonPlanPlatforms = new Dictionary<string, SubscriptionPlatforms>
+            {
+                [GamePassPlanSelection.PcGamePass.Key()] = SubscriptionPlatforms.WindowsPc
+            }
+        };
+
+        Assert.Equal(SubscriptionAvailability.Active,
+            GamePassPlanSelection.AllCatalogs.Project(
+                GamePassCatalogSelection.XboxOnly, GamePassConsoleSelection.Both, game).Availability);
+        Assert.Equal(SubscriptionAvailability.LeavingSoon,
+            GamePassPlanSelection.AllCatalogs.Project(
+                GamePassCatalogSelection.PcOnly, GamePassConsoleSelection.Both, game).Availability);
+    }
+
+    [Fact]
+    public void SelectedPcViewDoesNotWarnForConsoleLeavingSoonInSamePlan()
+    {
+        var game = new SubscriptionGame
+        {
+            Availability = SubscriptionAvailability.LeavingSoon,
+            AccessPlatforms = SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole,
+            PlanPlatforms = new Dictionary<string, SubscriptionPlatforms>
+            {
+                [GamePassPlanSelection.Ultimate.Key()] =
+                    SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole
+            },
+            LeavingSoonPlanPlatforms = new Dictionary<string, SubscriptionPlatforms>
+            {
+                [GamePassPlanSelection.Ultimate.Key()] = SubscriptionPlatforms.XboxConsole
+            }
+        };
+
+        Assert.Equal(SubscriptionAvailability.Active,
+            GamePassPlanSelection.Ultimate.Project(
+                GamePassCatalogSelection.PcOnly, GamePassConsoleSelection.Both, game).Availability);
+        Assert.Equal(SubscriptionAvailability.LeavingSoon,
+            GamePassPlanSelection.Ultimate.Project(
+                GamePassCatalogSelection.XboxOnly, GamePassConsoleSelection.Both, game).Availability);
+    }
+
     [Theory]
     [InlineData(GamePassCatalogSelection.PcOnly, SubscriptionPlatforms.WindowsPc, true)]
     [InlineData(GamePassCatalogSelection.PcOnly, SubscriptionPlatforms.XboxConsole, false)]

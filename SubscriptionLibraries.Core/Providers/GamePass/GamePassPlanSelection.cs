@@ -109,6 +109,56 @@ public static class GamePassPlanSelectionExtensions
         }
         return projected;
     }
+
+    public static SubscriptionGame Project(
+        this GamePassPlanSelection plan, GamePassCatalogSelection selection,
+        GamePassConsoleSelection consoleSelection, SubscriptionGame game)
+    {
+        var projected = plan.Project(consoleSelection, game);
+        var selectedPlatforms = selection switch
+        {
+            GamePassCatalogSelection.PcOnly => SubscriptionPlatforms.WindowsPc,
+            GamePassCatalogSelection.XboxOnly => SubscriptionPlatforms.XboxConsole,
+            GamePassCatalogSelection.Both =>
+                SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole,
+            _ => throw new ArgumentOutOfRangeException(nameof(selection))
+        };
+        var visiblePlatforms = projected.AccessPlatforms & selectedPlatforms;
+        if (visiblePlatforms == SubscriptionPlatforms.None)
+        {
+            throw new ArgumentException("The game is not in the selected platform view.", nameof(game));
+        }
+
+        if (game.Availability == SubscriptionAvailability.Removed)
+        {
+            projected.Availability = SubscriptionAvailability.Removed;
+            return projected;
+        }
+
+        SubscriptionPlatforms leavingPlatforms;
+        if (plan == GamePassPlanSelection.AllCatalogs)
+        {
+            leavingPlatforms = SubscriptionPlatforms.None;
+            if (game.LeavingSoonPlanPlatforms is not null)
+            {
+                foreach (var platforms in game.LeavingSoonPlanPlatforms.Values)
+                {
+                    leavingPlatforms |= platforms;
+                }
+            }
+        }
+        else
+        {
+            leavingPlatforms = game.LeavingSoonPlanPlatforms is not null &&
+                game.LeavingSoonPlanPlatforms.TryGetValue(plan.Key(), out var platforms)
+                    ? platforms : SubscriptionPlatforms.None;
+        }
+
+        projected.Availability = (leavingPlatforms & visiblePlatforms) != 0
+            ? SubscriptionAvailability.LeavingSoon
+            : SubscriptionAvailability.Active;
+        return projected;
+    }
 }
 
 public sealed class GamePassPlanCatalog

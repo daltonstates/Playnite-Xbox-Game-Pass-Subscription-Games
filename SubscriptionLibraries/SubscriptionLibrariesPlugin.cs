@@ -115,6 +115,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                     game.Availability != Core.Models.SubscriptionAvailability.Removed &&
                     settingsViewModel.Settings.Includes(game))
                 .Select(game => settingsViewModel.Settings.GamePassPlanSelection.Project(
+                    settingsViewModel.Settings.GamePassCatalogSelection,
                     settingsViewModel.Settings.GamePassConsoleSelection, game))
                 .Select(game => PlayniteGameMapper.Map(
                     game, now, result.IsVerified, result.CatalogTimestampUtc))
@@ -235,6 +236,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         try
         {
             var result = await SynchronizeAsync(false, false, CancellationToken.None);
+            var settings = settingsViewModel.Settings;
             var candidate = new MatchableGame
             {
                 GameId = selected.GameId ?? string.Empty,
@@ -243,7 +245,9 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             var matching = new GameMatchingService();
             var matches = result.Games
                 .Where(game => game.Availability != SubscriptionAvailability.Removed &&
-                    settingsViewModel.Settings.Includes(game))
+                    settings.Includes(game))
+                .Select(game => settings.GamePassPlanSelection.Project(
+                    settings.GamePassCatalogSelection, settings.GamePassConsoleSelection, game))
                 .Select(game => new
                 {
                     Game = game,
@@ -345,6 +349,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                         Region = providerOptions.Region,
                         Language = providerOptions.Language,
                         CacheLifetime = TimeSpan.FromHours(settings.CacheDurationHours),
+                        CatalogConfigurationKey = providerOptions.CatalogConfigurationKey,
                         ForceRefresh = forceRefresh,
                         RefreshFromNetwork = refreshFromNetwork
                     },
@@ -354,6 +359,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             var newlyLeavingNames = result.NewlyLeavingSoonGames
                 .Where(settings.Includes)
                 .Select(game => settings.GamePassPlanSelection.Project(
+                    settings.GamePassCatalogSelection,
                     settings.GamePassConsoleSelection, game))
                 .Where(game => game.Availability == SubscriptionAvailability.LeavingSoon)
                 .Select(game => game.Name)

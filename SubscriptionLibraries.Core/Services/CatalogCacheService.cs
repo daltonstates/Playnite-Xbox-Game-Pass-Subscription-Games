@@ -25,6 +25,8 @@ public sealed class CatalogCacheEnvelope
 
     public string Language { get; set; } = string.Empty;
 
+    public string? CatalogConfigurationKey { get; set; }
+
     public DateTimeOffset CachedAtUtc { get; set; }
 
     public List<string> ProductIds { get; set; } = new();
@@ -86,7 +88,8 @@ public sealed class CatalogCacheService
         string providerId,
         string region,
         string language,
-        TimeSpan maximumAge)
+        TimeSpan maximumAge,
+        string? catalogConfigurationKey = null)
     {
         if (maximumAge < TimeSpan.Zero)
         {
@@ -122,6 +125,13 @@ public sealed class CatalogCacheService
                         StringComparison.OrdinalIgnoreCase)))
             {
                 logger.Warn($"Ignoring invalid catalog cache at {path}.");
+                return null;
+            }
+
+            if (!string.Equals(envelope.CatalogConfigurationKey, catalogConfigurationKey,
+                    StringComparison.Ordinal))
+            {
+                logger.Info("Catalog configuration changed; ignoring the previous cache.");
                 return null;
             }
 

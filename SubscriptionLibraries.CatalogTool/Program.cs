@@ -82,7 +82,7 @@ internal static class Program
         var diagnostics = result.Diagnostics;
         var selectedGames = result.Games
             .Where(game => selection.Includes(plan, consoleSelection, game))
-            .Select(game => plan.Project(consoleSelection, game))
+            .Select(game => plan.Project(selection, consoleSelection, game))
             .ToList();
         Console.WriteLine();
         Console.WriteLine("Game Pass");

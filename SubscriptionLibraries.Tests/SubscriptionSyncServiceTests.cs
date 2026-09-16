@@ -30,6 +30,27 @@ public sealed class SubscriptionSyncServiceTests
     }
 
     [Fact]
+    public async Task ChangingCatalogConfigurationBypassesFreshCache()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeProvider();
+        provider.Return(FakeProvider.Game("OLD"));
+        provider.Return(FakeProvider.Game("NEW"));
+        var service = CreateService(directory, clock);
+        var options = Options();
+        options.CatalogConfigurationKey = "first collection";
+
+        await service.SynchronizeAsync(provider, options);
+        options.CatalogConfigurationKey = "second collection";
+        var refreshed = await service.SynchronizeAsync(provider, options);
+
+        Assert.Equal(2, provider.CallCount);
+        Assert.Equal(SubscriptionCatalogSource.Live, refreshed.Source);
+        Assert.Equal("NEW", Assert.Single(refreshed.Games).ProviderGameId);
+    }
+
+    [Fact]
     public async Task FallsBackToStaleCacheWhenProviderFails()
     {
         using var directory = new TemporaryDirectory();
@@ -233,6 +254,168 @@ public sealed class SubscriptionSyncServiceTests
         Assert.Equal(SubscriptionPlatforms.XboxConsole,
             GamePassPlanSelection.Premium.EligiblePlatforms(game));
         Assert.False(GamePassCatalogSelection.PcOnly.Includes(GamePassPlanSelection.Premium, game));
+    }
+
+    [Fact]
+    public async Task IncompleteMetadataClearsGenerationNoLongerInDeclaredCatalog()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        var previous = FakeProvider.Game("SHIFT");
+        previous.AccessPlatforms = SubscriptionPlatforms.XboxConsole;
+        previous.PlanPlatforms[GamePassPlanSelection.Ultimate.Key()] =
+            SubscriptionPlatforms.XboxConsole;
+        previous.XboxGenerations = XboxConsoleGenerations.XboxOne;
+        previous.PlanXboxGenerations[GamePassPlanSelection.Ultimate.Key()] =
+            XboxConsoleGenerations.XboxOne;
+        provider.Return(new[] { previous, FakeProvider.Game("STAYS") },
+            new[] { "SHIFT", "STAYS" });
+        provider.Return(new[] { FakeProvider.Game("STAYS") },
+            new[] { "SHIFT", "STAYS" },
+            new[] { "SHIFT" },
+            new Dictionary<string, SubscriptionPlatforms>
+            {
+                ["SHIFT"] = SubscriptionPlatforms.XboxConsole
+            },
+            new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>
+            {
+                ["SHIFT"] = new Dictionary<string, SubscriptionPlatforms>
+                {
+                    [GamePassPlanSelection.Ultimate.Key()] = SubscriptionPlatforms.XboxConsole
+                }
+            });
+        var service = CreateService(directory, clock);
+        var options = Options();
+
+        await service.SynchronizeAsync(provider, options);
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var result = await service.SynchronizeAsync(provider, options);
+
+        var game = Assert.Single(result.Games, candidate => candidate.ProviderGameId == "SHIFT");
+        Assert.Equal(SubscriptionCatalogSource.Live, result.Source);
+        Assert.Equal(XboxConsoleGenerations.None, game.XboxGenerations);
+        Assert.Empty(game.PlanXboxGenerations);
+    }
+
+    [Fact]
+    public async Task PartialPlanResponseFallsBackInsteadOfAcceptingMassMembershipLoss()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        var ids = Enumerable.Range(0, 24).Select(index => $"GAME{index}").ToArray();
+        var previous = ids.Select(id =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.WindowsPc;
+            game.PlanPlatforms[GamePassPlanSelection.PcGamePass.Key()] =
+                SubscriptionPlatforms.WindowsPc;
+            return game;
+        }).ToArray();
+        provider.Return(previous, ids);
+        var current = ids.Select((id, index) =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.WindowsPc;
+            game.PlanPlatforms[(index < 8
+                ? GamePassPlanSelection.PcGamePass
+                : GamePassPlanSelection.Ultimate).Key()] =
+                SubscriptionPlatforms.WindowsPc;
+            return game;
+        }).ToArray();
+        provider.Return(current, ids);
+        var service = CreateService(directory, clock);
+        var options = Options();
+
+        await service.SynchronizeAsync(provider, options);
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var fallback = await service.SynchronizeAsync(provider, options);
+
+        Assert.True(fallback.UsedFallback);
+        Assert.False(fallback.IsVerified);
+        Assert.Contains("pc-game-pass PC membership unexpectedly dropped from 24 to 8",
+            fallback.Warning);
+        Assert.Equal(24, fallback.Games.Count);
+        Assert.All(fallback.Games, game => Assert.True(
+            GamePassCatalogSelection.PcOnly.Includes(GamePassPlanSelection.PcGamePass, game)));
+    }
+
+    [Fact]
+    public async Task PartialGenerationResponseFallsBackWhileOverallPlanCountStaysStable()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        var ids = Enumerable.Range(0, 6).Select(index => $"GAME{index}").ToArray();
+        var previous = ids.Select(id =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.XboxConsole;
+            game.PlanPlatforms[GamePassPlanSelection.Ultimate.Key()] =
+                SubscriptionPlatforms.XboxConsole;
+            game.PlanXboxGenerations[GamePassPlanSelection.Ultimate.Key()] =
+                XboxConsoleGenerations.Both;
+            return game;
+        }).ToArray();
+        provider.Return(previous, ids);
+        var current = ids.Select(id =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.XboxConsole;
+            game.PlanPlatforms[GamePassPlanSelection.Ultimate.Key()] =
+                SubscriptionPlatforms.XboxConsole;
+            game.PlanXboxGenerations[GamePassPlanSelection.Ultimate.Key()] =
+                XboxConsoleGenerations.SeriesXorS;
+            return game;
+        }).ToArray();
+        provider.Return(current, ids);
+        var service = CreateService(directory, clock);
+        var options = Options();
+
+        await service.SynchronizeAsync(provider, options);
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var fallback = await service.SynchronizeAsync(provider, options);
+
+        Assert.True(fallback.UsedFallback);
+        Assert.Contains("ultimate Xbox One membership unexpectedly dropped from 6 to 0",
+            fallback.Warning);
+        Assert.Equal(6, fallback.Games.Count);
+    }
+
+    [Fact]
+    public async Task BroadPcAccessDropFallsBackForAllCatalogsView()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        var ids = Enumerable.Range(0, 6).Select(index => $"GAME{index}").ToArray();
+        var previous = ids.Select(id =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole;
+            return game;
+        }).ToArray();
+        var current = ids.Select(id =>
+        {
+            var game = FakeProvider.Game(id);
+            game.AccessPlatforms = SubscriptionPlatforms.XboxConsole;
+            return game;
+        }).ToArray();
+        provider.Return(previous, ids);
+        provider.Return(current, ids);
+        var service = CreateService(directory, clock);
+        var options = Options();
+
+        await service.SynchronizeAsync(provider, options);
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var fallback = await service.SynchronizeAsync(provider, options);
+
+        Assert.True(fallback.UsedFallback);
+        Assert.Contains("all catalogs PC membership unexpectedly dropped from 6 to 0",
+            fallback.Warning);
+        Assert.All(fallback.Games, game => Assert.True(
+            GamePassCatalogSelection.PcOnly.Includes(game)));
     }
 
     private static SubscriptionSyncService CreateService(TemporaryDirectory directory, FakeClock clock) =>

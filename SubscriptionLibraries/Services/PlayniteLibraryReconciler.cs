@@ -122,7 +122,7 @@ internal sealed class PlayniteLibraryReconciler
         var activeGames = catalogGames
             .Where(game => selection.Includes(plan, consoleSelection, game) &&
                 (!excludeConfirmedFreeToPlay || !game.IsConfirmedFreeToPlay))
-            .Select(game => plan.Project(consoleSelection, game))
+            .Select(game => plan.Project(selection, consoleSelection, game))
             .ToList();
         var activeIds = new HashSet<string>(
             catalogGames.Select(game => game.ProviderGameId),

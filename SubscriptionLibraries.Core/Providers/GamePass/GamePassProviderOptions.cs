@@ -26,6 +26,16 @@ public sealed class GamePassProviderOptions
 
     public int ProductBatchSize { get; set; } = GamePassConstants.ProductBatchSize;
 
+    public string CatalogConfigurationKey
+    {
+        get
+        {
+            var pcId = SiglId.ToUpperInvariant();
+            var consoleId = ConsoleSiglId.ToUpperInvariant();
+            return $"{pcId.Length}:{pcId}{consoleId.Length}:{consoleId}";
+        }
+    }
+
     public GamePassProviderOptions NormalizeAndValidate()
     {
         Region = (Region ?? string.Empty).Trim().ToUpperInvariant();

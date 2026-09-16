@@ -8,6 +8,29 @@ namespace SubscriptionLibraries.Tests;
 public sealed class CatalogCacheServiceTests
 {
     [Fact]
+    public void CatalogIdentityTracksBothCollectionIdsWithoutCaseSensitivity()
+    {
+        var original = new GamePassProviderOptions().NormalizeAndValidate();
+        var changedPc = new GamePassProviderOptions
+        {
+            SiglId = "11111111-1111-1111-1111-111111111111"
+        }.NormalizeAndValidate();
+        var changedConsole = new GamePassProviderOptions
+        {
+            ConsoleSiglId = "22222222-2222-2222-2222-222222222222"
+        }.NormalizeAndValidate();
+        var changedCase = new GamePassProviderOptions
+        {
+            SiglId = GamePassConstants.PcCatalogSiglId.ToUpperInvariant(),
+            ConsoleSiglId = GamePassConstants.ConsoleCatalogSiglId.ToUpperInvariant()
+        }.NormalizeAndValidate();
+
+        Assert.NotEqual(original.CatalogConfigurationKey, changedPc.CatalogConfigurationKey);
+        Assert.NotEqual(original.CatalogConfigurationKey, changedConsole.CatalogConfigurationKey);
+        Assert.Equal(original.CatalogConfigurationKey, changedCase.CatalogConfigurationKey);
+    }
+
+    [Fact]
     public async Task WritesAtomicallyAndReportsFreshThenExpiredCache()
     {
         using var directory = new TemporaryDirectory();
