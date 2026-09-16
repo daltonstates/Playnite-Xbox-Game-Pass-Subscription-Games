@@ -15,7 +15,7 @@ namespace SubscriptionLibraries.Core.Services;
 
 public sealed class CatalogCacheEnvelope
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 

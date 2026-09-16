@@ -28,6 +28,8 @@ public interface ISubscriptionCatalogProvider : ISubscriptionProvider
 
 public sealed class SubscriptionCatalogSnapshot
 {
+    public bool LeavingSoonStatusKnown { get; set; } = true;
+
     public IReadOnlyCollection<SubscriptionGame> Games { get; set; } =
         Array.Empty<SubscriptionGame>();
 
@@ -35,4 +37,19 @@ public sealed class SubscriptionCatalogSnapshot
 
     public IReadOnlyCollection<string> IncompleteProductIds { get; set; } =
         Array.Empty<string>();
+
+    // Source-declared membership can remain known even when product metadata
+    // cannot be normalized. Used to avoid preserving a stale platform claim.
+    public IReadOnlyDictionary<string, SubscriptionPlatforms> DeclaredPlatformsByProductId { get; set; } =
+        new Dictionary<string, SubscriptionPlatforms>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>
+        DeclaredPlanPlatformsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+            StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, Dictionary<string, XboxConsoleGenerations>>
+        DeclaredPlanGenerationsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, XboxConsoleGenerations>>(
+            StringComparer.OrdinalIgnoreCase);
 }

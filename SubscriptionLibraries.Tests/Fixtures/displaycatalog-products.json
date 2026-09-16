@@ -158,6 +158,30 @@
       "DisplaySkuAvailabilities": []
     },
     {
+      "ProductId": "CONSOLEONLY001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        { "ProductTitle": "Console Catalog Exclusive" }
+      ],
+      "DisplaySkuAvailabilities": [
+        {
+          "Sku": {
+            "Properties": {
+              "Packages": [
+                {
+                  "PlatformDependencies": [
+                    { "PlatformName": "Windows.Xbox" },
+                    { "PlatformName": "Windows.Desktop" }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "ProductId": "NULLMETA0001",
       "ProductFamily": "Games",
       "ProductKind": "Game",

@@ -32,6 +32,8 @@ public enum SubscriptionCatalogSource
 
 public sealed class SubscriptionSyncResult
 {
+    public bool IsVerified => !UsedFallback && Source != SubscriptionCatalogSource.StaleCache;
+
     public IReadOnlyList<SubscriptionGame> Games { get; set; } = Array.Empty<SubscriptionGame>();
 
     public SubscriptionCatalogSource Source { get; set; }
@@ -45,6 +47,9 @@ public sealed class SubscriptionSyncResult
     public CatalogDiagnostics? Diagnostics { get; set; }
 
     public int RemovedGameCount { get; set; }
+
+    public IReadOnlyList<SubscriptionGame> NewlyLeavingSoonGames { get; set; } =
+        Array.Empty<SubscriptionGame>();
 }
 
 public sealed class SubscriptionSyncService
@@ -125,16 +130,51 @@ public sealed class SubscriptionSyncService
             var preservedIncompleteCount = 0;
             foreach (var incompleteId in incompleteIds)
             {
-                if (!returnedIds.Contains(incompleteId) &&
-                    previousActive.TryGetValue(incompleteId, out var previousIncomplete))
+                if (!previousActive.TryGetValue(incompleteId, out var previousIncomplete))
                 {
-                    var preserved = Clone(previousIncomplete);
-                    preserved.Availability = SubscriptionAvailability.Active;
-                    preserved.LeavingDate = null;
-                    games.Add(preserved);
-                    returnedIds.Add(incompleteId);
-                    preservedIncompleteCount++;
+                    continue;
                 }
+
+                var hasDeclaredMembership = snapshot.DeclaredPlatformsByProductId.TryGetValue(
+                    incompleteId, out var declaredMembership);
+                var preservedPlatforms = hasDeclaredMembership
+                    ? (previousIncomplete.AccessPlatforms & declaredMembership) |
+                      (declaredMembership & SubscriptionPlatforms.XboxConsole)
+                    : previousIncomplete.AccessPlatforms;
+
+                if (returnedIds.Contains(incompleteId))
+                {
+                    if (hasDeclaredMembership)
+                    {
+                        var partial = games.First(game =>
+                            string.Equals(game.ProviderGameId, incompleteId,
+                                StringComparison.OrdinalIgnoreCase));
+                        partial.AccessPlatforms |= preservedPlatforms;
+                        partial.Platform = SubscriptionPlatformNames.Format(partial.AccessPlatforms);
+                        UpdateDeclaredPlans(partial, incompleteId, snapshot);
+                    }
+
+                    continue;
+                }
+
+                if (hasDeclaredMembership && preservedPlatforms == SubscriptionPlatforms.None)
+                {
+                    continue;
+                }
+
+                var preserved = Clone(previousIncomplete);
+                if (hasDeclaredMembership)
+                {
+                    preserved.AccessPlatforms = preservedPlatforms;
+                    preserved.Platform = SubscriptionPlatformNames.Format(preservedPlatforms);
+                    UpdateDeclaredPlans(preserved, incompleteId, snapshot);
+                }
+
+                preserved.Availability = SubscriptionAvailability.Active;
+                preserved.LeavingDate = null;
+                games.Add(preserved);
+                returnedIds.Add(incompleteId);
+                preservedIncompleteCount++;
             }
 
             if (preservedIncompleteCount > 0)
@@ -150,8 +190,20 @@ public sealed class SubscriptionSyncService
 
             foreach (var game in games)
             {
-                game.Availability = SubscriptionAvailability.Active;
-                game.LeavingDate = null;
+                if (!snapshot.LeavingSoonStatusKnown &&
+                    previousActive.TryGetValue(game.ProviderGameId, out var previousStatus) &&
+                    previousStatus.Availability == SubscriptionAvailability.LeavingSoon)
+                {
+                    game.Availability = SubscriptionAvailability.LeavingSoon;
+                    game.LeavingSoonPlanPlatforms = new Dictionary<string, SubscriptionPlatforms>(
+                        previousStatus.LeavingSoonPlanPlatforms ??
+                            new Dictionary<string, SubscriptionPlatforms>(),
+                        StringComparer.OrdinalIgnoreCase);
+                }
+                if (game.Availability != SubscriptionAvailability.LeavingSoon)
+                {
+                    game.LeavingDate = null;
+                }
                 if (previousActive.TryGetValue(game.ProviderGameId, out var previous))
                 {
                     game.DateAdded = previous.DateAdded;
@@ -187,6 +239,14 @@ public sealed class SubscriptionSyncService
                 .OrderByDescending(game => game.LeavingDate)
                 .Take(MaximumRemovedHistory)
                 .ToList();
+            var newlyLeavingSoonGames = cache is null || !snapshot.LeavingSoonStatusKnown
+                ? new List<SubscriptionGame>()
+                : games.Where(game =>
+                        game.Availability == SubscriptionAvailability.LeavingSoon &&
+                        (!previousActive.TryGetValue(game.ProviderGameId, out var prior) ||
+                         prior.Availability != SubscriptionAvailability.LeavingSoon ||
+                         !SameLeavingMembership(prior, game)))
+                    .OrderBy(game => game.Name).ToList();
             var diagnostics = (provider as GamePassProvider)?.LastDiagnostics;
             var envelope = new CatalogCacheEnvelope
             {
@@ -213,7 +273,8 @@ public sealed class SubscriptionSyncService
                 Source = SubscriptionCatalogSource.Live,
                 CatalogTimestampUtc = now,
                 Diagnostics = diagnostics,
-                RemovedGameCount = removedGames.Count
+                RemovedGameCount = removedGames.Count,
+                NewlyLeavingSoonGames = newlyLeavingSoonGames
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -293,6 +354,16 @@ public sealed class SubscriptionSyncService
         Name = game.Name,
         MicrosoftProductId = game.MicrosoftProductId,
         Platform = game.Platform,
+        AccessPlatforms = game.AccessPlatforms,
+        XboxGenerations = game.XboxGenerations,
+        PlanXboxGenerations = game.PlanXboxGenerations is null
+            ? new Dictionary<string, XboxConsoleGenerations>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, XboxConsoleGenerations>(
+                game.PlanXboxGenerations, StringComparer.OrdinalIgnoreCase),
+        PlanPlatforms = game.PlanPlatforms is null
+            ? new Dictionary<string, SubscriptionPlatforms>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, SubscriptionPlatforms>(
+                game.PlanPlatforms, StringComparer.OrdinalIgnoreCase),
         SubscriptionTier = game.SubscriptionTier,
         StoreUri = game.StoreUri,
         ImageUri = game.ImageUri,
@@ -303,6 +374,11 @@ public sealed class SubscriptionSyncService
         ReleaseDate = game.ReleaseDate,
         DateAdded = game.DateAdded,
         LeavingDate = game.LeavingDate,
+        LeavingSoonPlanPlatforms = game.LeavingSoonPlanPlatforms is null
+            ? new Dictionary<string, SubscriptionPlatforms>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, SubscriptionPlatforms>(
+                game.LeavingSoonPlanPlatforms, StringComparer.OrdinalIgnoreCase),
+        IsConfirmedFreeToPlay = game.IsConfirmedFreeToPlay,
         Availability = game.Availability,
         RawSourceIdentifiers = game.RawSourceIdentifiers is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -310,4 +386,43 @@ public sealed class SubscriptionSyncService
                 game.RawSourceIdentifiers,
                 StringComparer.OrdinalIgnoreCase)
     };
+
+    private static void UpdateDeclaredPlans(
+        SubscriptionGame game,
+        string productId,
+        SubscriptionCatalogSnapshot snapshot)
+    {
+        if (!snapshot.DeclaredPlanPlatformsByProductId.TryGetValue(
+                productId, out var declaredPlans))
+        {
+            game.PlanPlatforms = new Dictionary<string, SubscriptionPlatforms>(
+                StringComparer.OrdinalIgnoreCase);
+            return;
+        }
+
+        game.PlanPlatforms = declaredPlans
+            .Select(pair => new KeyValuePair<string, SubscriptionPlatforms>(
+                pair.Key, pair.Value & game.AccessPlatforms))
+            .Where(pair => pair.Value != SubscriptionPlatforms.None)
+            .ToDictionary(pair => pair.Key, pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+        if (snapshot.DeclaredPlanGenerationsByProductId.TryGetValue(
+                productId, out var declaredGenerations))
+        {
+            game.PlanXboxGenerations = new Dictionary<string, XboxConsoleGenerations>(
+                declaredGenerations, StringComparer.OrdinalIgnoreCase);
+            game.XboxGenerations = declaredGenerations.Values.Aggregate(
+                XboxConsoleGenerations.None, (current, next) => current | next);
+        }
+    }
+
+    private static bool SameLeavingMembership(SubscriptionGame previous, SubscriptionGame current)
+    {
+        var before = previous.LeavingSoonPlanPlatforms ??
+            new Dictionary<string, SubscriptionPlatforms>();
+        var after = current.LeavingSoonPlanPlatforms ??
+            new Dictionary<string, SubscriptionPlatforms>();
+        return before.Count == after.Count && before.All(pair =>
+            after.TryGetValue(pair.Key, out var platforms) && platforms == pair.Value);
+    }
 }

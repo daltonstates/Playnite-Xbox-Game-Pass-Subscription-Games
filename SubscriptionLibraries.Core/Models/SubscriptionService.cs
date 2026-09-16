@@ -2,7 +2,7 @@ namespace SubscriptionLibraries.Core.Models;
 
 public sealed class SubscriptionService
 {
-    public static readonly SubscriptionService PcGamePass = new("pc-game-pass", "PC Game Pass");
+    public static readonly SubscriptionService GamePass = new("game-pass", "Game Pass");
 
     public SubscriptionService(string id, string name)
     {

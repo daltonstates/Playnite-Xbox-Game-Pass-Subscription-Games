@@ -22,13 +22,61 @@ public sealed class GamePassCatalogClient
     }
 
     public async Task<GamePassCatalogIndex> GetProductIdsAsync(
+        CancellationToken cancellationToken = default) =>
+        await GetProductIdsAsync(options.SiglId, cancellationToken).ConfigureAwait(false);
+
+    public async Task<GamePassCatalogIndex> GetProductIdsAsync(
+        string siglId,
         CancellationToken cancellationToken = default)
     {
-        var uri = BuildUri(
+        return await GetProductIdsCoreAsync(
+            siglId,
             options.CatalogEndpoint,
-            new KeyValuePair<string, string>("id", options.SiglId),
+            Array.Empty<KeyValuePair<string, string>>(),
+            true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task<GamePassCatalogIndex> GetPlanProductIdsAsync(
+        GamePassPlanCatalog catalog,
+        CancellationToken cancellationToken = default)
+    {
+        if (catalog is null)
+        {
+            throw new ArgumentNullException(nameof(catalog));
+        }
+
+        return GetProductIdsCoreAsync(
+            catalog.SiglId,
+            options.PlanCatalogEndpoint,
+            new[]
+            {
+                new KeyValuePair<string, string>("platformContext", catalog.PlatformContext),
+                new KeyValuePair<string, string>("subscriptionContext", catalog.SubscriptionContext)
+            },
+            false,
+            cancellationToken);
+    }
+
+    private async Task<GamePassCatalogIndex> GetProductIdsCoreAsync(
+        string siglId,
+        Uri endpoint,
+        IReadOnlyCollection<KeyValuePair<string, string>> context,
+        bool requireProducts,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(siglId))
+        {
+            throw new ArgumentException("A SIGL identifier is required.", nameof(siglId));
+        }
+
+        var parameters = new[]
+        {
+            new KeyValuePair<string, string>("id", siglId),
             new KeyValuePair<string, string>("language", options.Language),
-            new KeyValuePair<string, string>("market", options.Region));
+            new KeyValuePair<string, string>("market", options.Region)
+        }.Concat(context).ToArray();
+        var uri = BuildUri(endpoint, parameters);
 
         var json = await httpClient.GetStringAsync(uri, cancellationToken).ConfigureAwait(false);
         JArray array;
@@ -53,10 +101,10 @@ public sealed class GamePassCatalogClient
         }
 
         var header = entries.FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.SiglId));
-        if (header is null || !string.Equals(header.SiglId, options.SiglId, StringComparison.OrdinalIgnoreCase))
+        if (header is null || !string.Equals(header.SiglId, siglId, StringComparison.OrdinalIgnoreCase))
         {
             throw new CatalogDataException(
-                "The Game Pass SIGL response did not contain the expected PC catalog header.");
+                "The Game Pass SIGL response did not contain the expected catalog header.");
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -66,9 +114,9 @@ public sealed class GamePassCatalogClient
             .Cast<string>()
             .ToList();
 
-        if (ids.Count == 0)
+        if (requireProducts && ids.Count == 0)
         {
-            throw new CatalogDataException("The PC Game Pass SIGL response contained no product IDs.");
+            throw new CatalogDataException("The Game Pass SIGL response contained no product IDs.");
         }
 
         return new GamePassCatalogIndex

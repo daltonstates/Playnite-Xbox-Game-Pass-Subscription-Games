@@ -16,7 +16,7 @@ public sealed class MicrosoftStoreCatalogClientTests
 
         var products = await client.GetProductsAsync(new[] { "PCPACKAGE001" });
 
-        Assert.Equal(6, products.Count);
+        Assert.Equal(7, products.Count);
         var desktop = Assert.Single(products, product => product.ProductId == "PCPACKAGE001" &&
             product.LocalizedProperties?[0].ProductTitle == "Desktop Package Game");
         Assert.Equal("Example Developer", desktop.LocalizedProperties?[0].DeveloperName);

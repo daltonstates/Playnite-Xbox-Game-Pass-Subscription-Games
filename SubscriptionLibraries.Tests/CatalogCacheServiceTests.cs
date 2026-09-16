@@ -1,4 +1,6 @@
 using SubscriptionLibraries.Core.Services;
+using SubscriptionLibraries.Core.Models;
+using SubscriptionLibraries.Core.Providers.GamePass;
 using Xunit;
 
 namespace SubscriptionLibraries.Tests;
@@ -31,6 +33,35 @@ public sealed class CatalogCacheServiceTests
         Assert.NotNull(expired);
         Assert.False(expired.IsFresh);
         Assert.Equal(2, expired.Envelope.Games.Count);
+    }
+
+    [Fact]
+    public async Task RoundTripsPlanMembershipAndRejectsOldSchema()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var cache = new CatalogCacheService(directory.Path, clock: clock);
+        var envelope = CreateEnvelope(clock.UtcNow, "ONE");
+        envelope.Games[0].AccessPlatforms = SubscriptionPlatforms.WindowsPc;
+        envelope.Games[0].PlanPlatforms[GamePassPlanSelection.PcGamePass.Key()] =
+            SubscriptionPlatforms.WindowsPc;
+        envelope.Games[0].XboxGenerations = XboxConsoleGenerations.XboxOne;
+        envelope.Games[0].PlanXboxGenerations[GamePassPlanSelection.Ultimate.Key()] =
+            XboxConsoleGenerations.XboxOne;
+        envelope.Games[0].IsConfirmedFreeToPlay = true;
+        await cache.WriteAsync(envelope);
+
+        var cached = cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24));
+        Assert.NotNull(cached);
+        Assert.Equal(SubscriptionPlatforms.WindowsPc,
+            GamePassPlanSelection.PcGamePass.EligiblePlatforms(Assert.Single(cached.Envelope.Games)));
+        Assert.Equal(XboxConsoleGenerations.XboxOne, cached.Envelope.Games[0].XboxGenerations);
+        Assert.True(cached.Envelope.Games[0].IsConfirmedFreeToPlay);
+
+        var path = cache.GetCachePath("fake-provider", "US", "en-US");
+        var json = File.ReadAllText(path).Replace("\"SchemaVersion\": 4", "\"SchemaVersion\": 3");
+        File.WriteAllText(path, json);
+        Assert.Null(cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24)));
     }
 
     [Fact]

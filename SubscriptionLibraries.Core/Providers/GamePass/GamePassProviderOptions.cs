@@ -16,7 +16,11 @@ public sealed class GamePassProviderOptions
 
     public string SiglId { get; set; } = GamePassConstants.PcCatalogSiglId;
 
+    public string ConsoleSiglId { get; set; } = GamePassConstants.ConsoleCatalogSiglId;
+
     public Uri CatalogEndpoint { get; set; } = GamePassConstants.CatalogEndpoint;
+
+    public Uri PlanCatalogEndpoint { get; set; } = GamePassConstants.PlanCatalogEndpoint;
 
     public Uri DisplayCatalogEndpoint { get; set; } = GamePassConstants.DisplayCatalogEndpoint;
 
@@ -27,6 +31,7 @@ public sealed class GamePassProviderOptions
         Region = (Region ?? string.Empty).Trim().ToUpperInvariant();
         Language = (Language ?? string.Empty).Trim();
         SiglId = (SiglId ?? string.Empty).Trim();
+        ConsoleSiglId = (ConsoleSiglId ?? string.Empty).Trim();
 
         if (!RegionPattern.IsMatch(Region))
         {
@@ -43,9 +48,22 @@ public sealed class GamePassProviderOptions
             throw new ArgumentException("A Game Pass SIGL identifier is required.", nameof(SiglId));
         }
 
+        if (string.IsNullOrWhiteSpace(ConsoleSiglId) ||
+            string.Equals(SiglId, ConsoleSiglId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("A distinct console Game Pass SIGL identifier is required.", nameof(ConsoleSiglId));
+        }
+
         if (CatalogEndpoint is null || !CatalogEndpoint.IsAbsoluteUri || CatalogEndpoint.Scheme != Uri.UriSchemeHttps)
         {
             throw new ArgumentException("The catalog endpoint must be an absolute HTTPS URI.", nameof(CatalogEndpoint));
+        }
+
+        if (PlanCatalogEndpoint is null || !PlanCatalogEndpoint.IsAbsoluteUri ||
+            PlanCatalogEndpoint.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException("The plan catalog endpoint must be an absolute HTTPS URI.",
+                nameof(PlanCatalogEndpoint));
         }
 
         if (DisplayCatalogEndpoint is null ||

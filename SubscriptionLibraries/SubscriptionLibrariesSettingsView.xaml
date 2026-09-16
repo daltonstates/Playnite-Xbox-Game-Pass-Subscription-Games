@@ -16,11 +16,18 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,16" />
 
+            <TextBlock Text="Choose your plan and PC/Xbox view independently. Entries outside your selection can be marked, hidden, or cleaned up. This does not verify your personal subscription."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,14" />
+
             <GroupBox Header="Subscription Providers" Margin="0,0,0,12">
                 <StackPanel Margin="12">
-                    <CheckBox Content="PC Game Pass"
+                    <CheckBox Content="Game Pass (PC and Xbox console)"
                               IsChecked="{Binding Settings.PcGamePassEnabled}"
                               FontWeight="SemiBold" />
+                    <TextBlock Text="Plan and platform filters use Microsoft's regional public catalog. They do not check your Microsoft account."
+                               TextWrapping="Wrap"
+                               Margin="22,5,0,4" />
                     <CheckBox Content="EA Play (source not reliable enough yet)"
                               IsEnabled="False"
                               Margin="22,6,0,0" />
@@ -44,34 +51,87 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Region" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Subscription plan" VerticalAlignment="Center" Margin="0,0,12,8" />
                     <ComboBox Grid.Row="0" Grid.Column="1"
+                              ItemsSource="{Binding GamePassPlans}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding Settings.GamePassPlanSelection}"
+                              Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Show Game Pass games" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding GamePassSelections}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding Settings.GamePassCatalogSelection}"
+                              Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Xbox console generation" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="2" Grid.Column="1"
+                              ItemsSource="{Binding ConsoleSelections}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding Settings.GamePassConsoleSelection}"
+                              Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Region" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="3" Grid.Column="1"
                               ItemsSource="{Binding Regions}"
                               DisplayMemberPath="DisplayName"
                               SelectedValuePath="Code"
                               SelectedValue="{Binding Settings.Region}"
                               Margin="0,0,0,8" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Language" VerticalAlignment="Center" Margin="0,0,12,8" />
-                    <ComboBox Grid.Row="1" Grid.Column="1"
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Language" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="4" Grid.Column="1"
                               ItemsSource="{Binding Languages}"
                               DisplayMemberPath="DisplayName"
                               SelectedValuePath="Code"
                               SelectedValue="{Binding Settings.Language}"
                               Margin="0,0,0,8" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Cache duration (hours)" VerticalAlignment="Center" Margin="0,0,12,8" />
-                    <TextBox Grid.Row="2" Grid.Column="1"
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Cache duration (hours)" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <TextBox Grid.Row="5" Grid.Column="1"
                              Width="90"
                              HorizontalAlignment="Left"
                              Text="{Binding Settings.CacheDurationHours, UpdateSourceTrigger=PropertyChanged}"
                              Margin="0,0,0,8" />
 
-                    <CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                    <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
                               Content="Refresh during Playnite library update"
                               IsChecked="{Binding Settings.RefreshDuringLibraryUpdate}" />
+
+                    <CheckBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                              Content="Exclude confirmed free-to-play titles (Store MSRP is zero)"
+                              IsChecked="{Binding Settings.ExcludeConfirmedFreeToPlay}"
+                              Margin="0,6,0,0" />
+
+                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Unavailable entries" VerticalAlignment="Center" Margin="0,10,12,6" />
+                    <ComboBox Grid.Row="8" Grid.Column="1"
+                              ItemsSource="{Binding UnavailableHandlingOptions}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding Settings.UnavailableGameHandling}"
+                              Margin="0,10,0,6" />
+
+                    <TextBlock Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2"
+                               Text="Applies only to this extension's entries when a game leaves Game Pass or falls outside your selected plan/platform. Removal permanently discards that Playnite entry and any edits, but never touches games owned through other libraries. Played/installed entries are hidden; a stale catalog never triggers deletion."
+                               TextWrapping="Wrap" Margin="0,2,0,0" />
+
+                    <CheckBox Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="2"
+                              Content="Notify me when games enter the Leaving Soon collection"
+                              IsChecked="{Binding Settings.NotifyLeavingSoon}"
+                              Margin="0,8,0,0" />
                 </Grid>
             </GroupBox>
 
@@ -87,25 +147,29 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Last successful synchronization" Margin="0,0,12,6" />
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LastSuccessfulSynchronizationDisplay}" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="PC Game Pass games found" Margin="0,0,12,6" />
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastGameCountDisplay}" Margin="0,0,0,6" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Catalog verification" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CatalogVerificationDisplay}" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Classification diagnostics" Margin="0,0,12,6" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LastDiagnosticsDisplay}" Margin="0,0,0,6" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Games in last synced view" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LastGameCountDisplay}" Margin="0,0,0,6" />
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Last synchronization error" Margin="0,0,12,8" />
-                    <TextBlock Grid.Row="3" Grid.Column="1"
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Classification diagnostics" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LastDiagnosticsDisplay}" Margin="0,0,0,6" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Last synchronization error" Margin="0,0,12,8" />
+                    <TextBlock Grid.Row="4" Grid.Column="1"
                                Text="{Binding LastSynchronizationErrorDisplay}"
                                Margin="0,0,0,8"
                                TextWrapping="Wrap" />
 
-                    <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
-                        <Button Content="Refresh Now"
+                    <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
+                        <Button Content="Refresh and Apply..."
                                 Command="{Binding RefreshNowCommand}"
                                 MinWidth="110"
                                 Padding="10,4" />
@@ -123,8 +187,14 @@
                         <ColumnDefinition Width="170" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="PC catalog SIGL ID" VerticalAlignment="Center" Margin="0,0,12,0" />
-                    <TextBox Grid.Column="1" Text="{Binding Settings.GamePassSiglId, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="PC catalog SIGL ID" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Settings.GamePassSiglId, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Xbox catalog SIGL ID" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Settings.ConsoleGamePassSiglId, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
             </Expander>
         </StackPanel>

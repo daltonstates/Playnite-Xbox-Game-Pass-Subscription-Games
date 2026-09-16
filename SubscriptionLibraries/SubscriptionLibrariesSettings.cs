@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Playnite.SDK;
 using Playnite.SDK.Data;
+using SubscriptionLibraries.Core.Models;
 using SubscriptionLibraries.Core.Providers.GamePass;
 using SubscriptionLibraries.Core.Services;
 
@@ -12,22 +14,73 @@ namespace SubscriptionLibraries;
 public sealed class SubscriptionLibrariesSettings : ObservableObject
 {
     private bool pcGamePassEnabled = true;
+    private GamePassCatalogSelection gamePassCatalogSelection = GamePassCatalogSelection.PcOnly;
+    private GamePassPlanSelection gamePassPlanSelection = GamePassPlanSelection.PcGamePass;
+    private GamePassConsoleSelection gamePassConsoleSelection = GamePassConsoleSelection.Both;
+    private UnavailableGameHandling unavailableGameHandling = UnavailableGameHandling.KeepAndMark;
     private string region = "US";
     private string language = "en-US";
     private bool refreshDuringLibraryUpdate = true;
     private int cacheDurationHours = 24;
     private string gamePassSiglId = GamePassConstants.PcCatalogSiglId;
+    private string consoleGamePassSiglId = GamePassConstants.ConsoleCatalogSiglId;
     private DateTime? lastSuccessfulSynchronizationUtc;
     private int lastPcGamePassGameCount;
     private string? lastSynchronizationError;
     private string? lastCatalogSource;
     private int lastRejectedNonPcCount;
     private int lastUnclassifiedCount;
+    private int lastPcCatalogCount;
+    private int lastConsoleCatalogCount;
+    private int lastBothGameCount;
+    private bool excludeConfirmedFreeToPlay;
+    private bool notifyLeavingSoon = true;
+
+    public bool NotifyLeavingSoon
+    {
+        get => notifyLeavingSoon;
+        set => SetValue(ref notifyLeavingSoon, value);
+    }
+
+    public bool ExcludeConfirmedFreeToPlay
+    {
+        get => excludeConfirmedFreeToPlay;
+        set => SetValue(ref excludeConfirmedFreeToPlay, value);
+    }
+
+    public bool Includes(SubscriptionGame game) =>
+        GamePassCatalogSelection.Includes(GamePassPlanSelection,
+            GamePassConsoleSelection, game) &&
+        (!ExcludeConfirmedFreeToPlay || !game.IsConfirmedFreeToPlay);
 
     public bool PcGamePassEnabled
     {
         get => pcGamePassEnabled;
         set => SetValue(ref pcGamePassEnabled, value);
+    }
+
+    public GamePassCatalogSelection GamePassCatalogSelection
+    {
+        get => gamePassCatalogSelection;
+        set => SetValue(ref gamePassCatalogSelection, value);
+    }
+
+    public GamePassPlanSelection GamePassPlanSelection
+    {
+        get => gamePassPlanSelection;
+        set => SetValue(ref gamePassPlanSelection, value);
+    }
+
+    public GamePassConsoleSelection GamePassConsoleSelection
+    {
+        get => gamePassConsoleSelection;
+        set => SetValue(ref gamePassConsoleSelection, value);
+    }
+
+    public UnavailableGameHandling UnavailableGameHandling
+    {
+        get => unavailableGameHandling;
+        set => SetValue(ref unavailableGameHandling, value);
     }
 
     public string Region
@@ -58,6 +111,12 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
     {
         get => gamePassSiglId;
         set => SetValue(ref gamePassSiglId, value);
+    }
+
+    public string ConsoleGamePassSiglId
+    {
+        get => consoleGamePassSiglId;
+        set => SetValue(ref consoleGamePassSiglId, value);
     }
 
     public DateTime? LastSuccessfulSynchronizationUtc
@@ -95,6 +154,24 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
         get => lastUnclassifiedCount;
         set => SetValue(ref lastUnclassifiedCount, value);
     }
+
+    public int LastPcCatalogCount
+    {
+        get => lastPcCatalogCount;
+        set => SetValue(ref lastPcCatalogCount, value);
+    }
+
+    public int LastConsoleCatalogCount
+    {
+        get => lastConsoleCatalogCount;
+        set => SetValue(ref lastConsoleCatalogCount, value);
+    }
+
+    public int LastBothGameCount
+    {
+        get => lastBothGameCount;
+        set => SetValue(ref lastBothGameCount, value);
+    }
 }
 
 public sealed class LocaleOption
@@ -106,6 +183,58 @@ public sealed class LocaleOption
     }
 
     public string Code { get; }
+
+    public string DisplayName { get; }
+}
+
+public sealed class CatalogSelectionOption
+{
+    public CatalogSelectionOption(GamePassCatalogSelection value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public GamePassCatalogSelection Value { get; }
+
+    public string DisplayName { get; }
+}
+
+public sealed class PlanSelectionOption
+{
+    public PlanSelectionOption(GamePassPlanSelection value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public GamePassPlanSelection Value { get; }
+
+    public string DisplayName { get; }
+}
+
+public sealed class ConsoleSelectionOption
+{
+    public ConsoleSelectionOption(GamePassConsoleSelection value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public GamePassConsoleSelection Value { get; }
+
+    public string DisplayName { get; }
+}
+
+public sealed class UnavailableHandlingOption
+{
+    public UnavailableHandlingOption(UnavailableGameHandling value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public UnavailableGameHandling Value { get; }
 
     public string DisplayName { get; }
 }
@@ -161,6 +290,44 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         new LocaleOption("ja-JP", "Japanese (ja-JP)")
     };
 
+    public IReadOnlyList<CatalogSelectionOption> GamePassSelections { get; } = new[]
+    {
+        new CatalogSelectionOption(GamePassCatalogSelection.PcOnly, "PC games only"),
+        new CatalogSelectionOption(GamePassCatalogSelection.XboxOnly, "Xbox console games only"),
+        new CatalogSelectionOption(GamePassCatalogSelection.Both, "PC and Xbox console games")
+    };
+
+    public IReadOnlyList<PlanSelectionOption> GamePassPlans { get; } = new[]
+    {
+        new PlanSelectionOption(GamePassPlanSelection.PcGamePass, "PC Game Pass"),
+        new PlanSelectionOption(GamePassPlanSelection.Essential, "Xbox Game Pass Essential"),
+        new PlanSelectionOption(GamePassPlanSelection.Premium, "Xbox Game Pass Premium"),
+        new PlanSelectionOption(GamePassPlanSelection.Ultimate, "Xbox Game Pass Ultimate"),
+        new PlanSelectionOption(GamePassPlanSelection.XboxGamePassConsole,
+            "Xbox Game Pass for Console (legacy subscribers)"),
+        new PlanSelectionOption(GamePassPlanSelection.AllCatalogs,
+            "All catalogs (ignore subscription plan)")
+    };
+
+    public IReadOnlyList<ConsoleSelectionOption> ConsoleSelections { get; } = new[]
+    {
+        new ConsoleSelectionOption(GamePassConsoleSelection.Both,
+            "Xbox One and Xbox Series X|S"),
+        new ConsoleSelectionOption(GamePassConsoleSelection.XboxOne, "Xbox One only"),
+        new ConsoleSelectionOption(GamePassConsoleSelection.SeriesXorS,
+            "Xbox Series X|S only")
+    };
+
+    public IReadOnlyList<UnavailableHandlingOption> UnavailableHandlingOptions { get; } = new[]
+    {
+        new UnavailableHandlingOption(UnavailableGameHandling.KeepAndMark,
+            "Keep and mark unavailable (default)"),
+        new UnavailableHandlingOption(UnavailableGameHandling.Hide,
+            "Hide unavailable entries (reversible)"),
+        new UnavailableHandlingOption(UnavailableGameHandling.RemoveUnplayedAndHideRest,
+            "Remove unplayed entries; hide played/installed entries")
+    };
+
     public ICommand RefreshNowCommand { get; }
 
     public bool IsRefreshing
@@ -191,8 +358,26 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             ? "None"
             : Settings.LastSynchronizationError!;
 
+    public string CatalogVerificationDisplay
+    {
+        get
+        {
+            if (Settings.LastSuccessfulSynchronizationUtc is not DateTime verified)
+            {
+                return "Never verified";
+            }
+
+            var age = DateTime.UtcNow - DateTime.SpecifyKind(verified, DateTimeKind.Utc);
+            return $"{Settings.LastCatalogSource ?? "Unknown"}; " +
+                $"last live verification {Math.Max(0, (int)age.TotalHours)} hours ago";
+        }
+    }
+
     public string LastDiagnosticsDisplay =>
-        $"Rejected as non-PC: {Settings.LastRejectedNonPcCount:N0}; " +
+        $"PC catalog: {Settings.LastPcCatalogCount:N0}; " +
+        $"Xbox catalog: {Settings.LastConsoleCatalogCount:N0}; " +
+        $"both: {Settings.LastBothGameCount:N0}; " +
+        $"PC entries without Windows evidence: {Settings.LastRejectedNonPcCount:N0}; " +
         $"unclassified: {Settings.LastUnclassifiedCount:N0}";
 
     public void BeginEdit()
@@ -225,13 +410,34 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             errors.Add("Cache duration must be between 1 and 720 hours.");
         }
 
+        if (!Enum.IsDefined(typeof(GamePassCatalogSelection), Settings.GamePassCatalogSelection))
+        {
+            errors.Add("Choose PC, Xbox console, or both Game Pass catalogs.");
+        }
+
+        if (!Enum.IsDefined(typeof(GamePassPlanSelection), Settings.GamePassPlanSelection))
+        {
+            errors.Add("Choose a Game Pass subscription plan.");
+        }
+
+        if (!Enum.IsDefined(typeof(GamePassConsoleSelection), Settings.GamePassConsoleSelection))
+        {
+            errors.Add("Choose an Xbox console generation.");
+        }
+
+        if (!Enum.IsDefined(typeof(UnavailableGameHandling), Settings.UnavailableGameHandling))
+        {
+            errors.Add("Choose how to handle unavailable Game Pass entries.");
+        }
+
         try
         {
             _ = new GamePassProviderOptions
             {
                 Region = Settings.Region,
                 Language = Settings.Language,
-                SiglId = Settings.GamePassSiglId
+                SiglId = Settings.GamePassSiglId,
+                ConsoleSiglId = Settings.ConsoleGamePassSiglId
             }.NormalizeAndValidate();
         }
         catch (ArgumentException exception)
@@ -244,7 +450,8 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
 
     internal void RecordSyncResult(SubscriptionSyncResult result)
     {
-        Settings.LastPcGamePassGameCount = result.Games.Count;
+        Settings.LastPcGamePassGameCount = result.Games.Count(game =>
+            Settings.Includes(game));
         Settings.LastCatalogSource = result.Source.ToString();
         if (result.Source == SubscriptionCatalogSource.Live)
         {
@@ -259,6 +466,9 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
 
         if (result.Diagnostics is not null)
         {
+            Settings.LastPcCatalogCount = result.Diagnostics.ProductsIdentifiedAsPc;
+            Settings.LastConsoleCatalogCount = result.Diagnostics.ProductsIdentifiedAsConsole;
+            Settings.LastBothGameCount = result.Diagnostics.ProductsInBothCatalogs;
             Settings.LastRejectedNonPcCount = result.Diagnostics.ProductsRejectedAsNonPc;
             Settings.LastUnclassifiedCount =
                 result.Diagnostics.ProductsThatCouldNotBeClassified +
@@ -285,13 +495,10 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
     private async Task RefreshNowAsync()
     {
         IsRefreshing = true;
-        RefreshStatus = "Refreshing PC Game Pass catalog...";
+        RefreshStatus = "Refreshing Game Pass and preparing a library preview...";
         try
         {
-            var result = await plugin.RefreshCatalogAsync().ConfigureAwait(true);
-            RefreshStatus =
-                $"Catalog refreshed: {result.Games.Count:N0} Windows PC games. " +
-                "Run Update Game Library to apply the refreshed catalog to Playnite.";
+            RefreshStatus = await plugin.RefreshAndApplyAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -299,7 +506,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             RefreshStatus = $"Refresh failed: {exception.Message}";
             plugin.PlayniteApi.Dialogs.ShowErrorMessage(
                 exception.Message,
-                "PC Game Pass catalog refresh failed");
+                "Game Pass refresh and apply failed");
         }
         finally
         {
@@ -312,6 +519,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         OnPropertyChanged(nameof(LastSuccessfulSynchronizationDisplay));
         OnPropertyChanged(nameof(LastGameCountDisplay));
         OnPropertyChanged(nameof(LastSynchronizationErrorDisplay));
+        OnPropertyChanged(nameof(CatalogVerificationDisplay));
         OnPropertyChanged(nameof(LastDiagnosticsDisplay));
     }
 
@@ -322,6 +530,25 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         value.GamePassSiglId = string.IsNullOrWhiteSpace(value.GamePassSiglId)
             ? GamePassConstants.PcCatalogSiglId
             : value.GamePassSiglId;
+        value.ConsoleGamePassSiglId = string.IsNullOrWhiteSpace(value.ConsoleGamePassSiglId)
+            ? GamePassConstants.ConsoleCatalogSiglId
+            : value.ConsoleGamePassSiglId;
+        if (!Enum.IsDefined(typeof(GamePassCatalogSelection), value.GamePassCatalogSelection))
+        {
+            value.GamePassCatalogSelection = GamePassCatalogSelection.PcOnly;
+        }
+        if (!Enum.IsDefined(typeof(GamePassPlanSelection), value.GamePassPlanSelection))
+        {
+            value.GamePassPlanSelection = GamePassPlanSelection.PcGamePass;
+        }
+        if (!Enum.IsDefined(typeof(GamePassConsoleSelection), value.GamePassConsoleSelection))
+        {
+            value.GamePassConsoleSelection = GamePassConsoleSelection.Both;
+        }
+        if (!Enum.IsDefined(typeof(UnavailableGameHandling), value.UnavailableGameHandling))
+        {
+            value.UnavailableGameHandling = UnavailableGameHandling.KeepAndMark;
+        }
         value.CacheDurationHours = value.CacheDurationHours <= 0 ? 24 : value.CacheDurationHours;
     }
 }

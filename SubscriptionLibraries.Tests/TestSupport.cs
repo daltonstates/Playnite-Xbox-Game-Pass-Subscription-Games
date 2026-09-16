@@ -154,12 +154,20 @@ internal sealed class FakeCatalogProvider : ISubscriptionCatalogProvider
     public void Return(
         IReadOnlyCollection<SubscriptionGame> games,
         IReadOnlyCollection<string> productIds,
-        IReadOnlyCollection<string>? incompleteProductIds = null) =>
+        IReadOnlyCollection<string>? incompleteProductIds = null,
+        IReadOnlyDictionary<string, SubscriptionPlatforms>? declaredPlatformsByProductId = null,
+        IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>?
+            declaredPlanPlatformsByProductId = null) =>
         snapshots.Enqueue(new SubscriptionCatalogSnapshot
         {
             Games = games,
             ProductIds = productIds,
-            IncompleteProductIds = incompleteProductIds ?? Array.Empty<string>()
+            IncompleteProductIds = incompleteProductIds ?? Array.Empty<string>(),
+            DeclaredPlatformsByProductId = declaredPlatformsByProductId ??
+                new Dictionary<string, SubscriptionPlatforms>(StringComparer.OrdinalIgnoreCase),
+            DeclaredPlanPlatformsByProductId = declaredPlanPlatformsByProductId ??
+                new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+                    StringComparer.OrdinalIgnoreCase)
         });
 
     public async Task<IReadOnlyCollection<SubscriptionGame>> GetGamesAsync(

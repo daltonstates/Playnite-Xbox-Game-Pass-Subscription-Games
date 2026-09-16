@@ -193,8 +193,26 @@ public sealed class StoreAvailability
     [JsonProperty("Actions")]
     public List<string>? Actions { get; set; }
 
+    [JsonProperty("OrderManagementData")]
+    public StoreOrderManagementData? OrderManagementData { get; set; }
+
     [JsonProperty("Conditions")]
     public StoreAvailabilityConditions? Conditions { get; set; }
+}
+
+public sealed class StoreOrderManagementData
+{
+    [JsonProperty("Price")]
+    public StorePrice? Price { get; set; }
+}
+
+public sealed class StorePrice
+{
+    [JsonProperty("MSRP")]
+    public decimal? Msrp { get; set; }
+
+    [JsonProperty("ListPrice")]
+    public decimal? ListPrice { get; set; }
 }
 
 public sealed class StoreAvailabilityConditions
@@ -250,9 +268,17 @@ public sealed class CatalogDiagnostics
 {
     public int TotalCatalogIds { get; set; }
 
+    public int PcCatalogIds { get; set; }
+
+    public int ConsoleCatalogIds { get; set; }
+
     public int ProductsSuccessfullyResolved { get; set; }
 
     public int ProductsIdentifiedAsPc { get; set; }
+
+    public int ProductsIdentifiedAsConsole { get; set; }
+
+    public int ProductsInBothCatalogs { get; set; }
 
     public int ProductsRejectedAsNonPc { get; set; }
 
@@ -263,7 +289,22 @@ public sealed class CatalogDiagnostics
 
 public sealed class GamePassCatalogResult
 {
+    public bool LeavingSoonStatusKnown { get; set; }
+    public IReadOnlyList<string> PcProductIds { get; set; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> ConsoleProductIds { get; set; } = Array.Empty<string>();
+
     public IReadOnlyList<string> ProductIds { get; set; } = Array.Empty<string>();
+
+    public IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>
+        DeclaredPlanPlatformsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+            StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, Dictionary<string, XboxConsoleGenerations>>
+        DeclaredPlanGenerationsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, XboxConsoleGenerations>>(
+            StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<string> IncompleteProductIds { get; set; } = Array.Empty<string>();
 

@@ -7,11 +7,13 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Controls;
 using Playnite.SDK;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Models;
 using SubscriptionLibraries.Core.Services;
 using SubscriptionLibraries.Services;
 
@@ -59,13 +61,43 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     public override Guid Id { get; } = Guid.Parse("fa24a220-5ac0-440b-a816-30186a40c1a6");
 
-    public override string Name => "PC Game Pass";
+    public override string Name => "Subscription Libraries - Game Pass";
+
+    public override IEnumerable<MainMenuItem> GetMainMenuItems(GetMainMenuItemsArgs args)
+    {
+        yield return new MainMenuItem
+        {
+            Description = "Show active Game Pass games",
+            MenuSection = "@Subscription Libraries",
+            Action = _ => ShowActiveGamePassGames()
+        };
+        yield return new MainMenuItem
+        {
+            Description = "Refresh and apply Game Pass catalog...",
+            MenuSection = "@Subscription Libraries",
+            Action = async _ => await RefreshAndApplyFromMenuAsync()
+        };
+    }
+
+    public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
+    {
+        if (args.Games?.Count == 1 && settingsViewModel.Settings.PcGamePassEnabled)
+        {
+            yield return new GameMenuItem
+            {
+                Description = "Check Game Pass availability",
+                MenuSection = "@Subscription Libraries",
+                Action = async action => await CheckGamePassAvailabilityAsync(
+                    action.Games.First())
+            };
+        }
+    }
 
     public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
     {
         if (!settingsViewModel.Settings.PcGamePassEnabled)
         {
-            Logger.Info("PC Game Pass provider is disabled; returning no subscription games.");
+            Logger.Info("Game Pass provider is disabled; returning no subscription games.");
             return Array.Empty<GameMetadata>();
         }
 
@@ -79,22 +111,27 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                 .GetResult();
             var now = DateTimeOffset.UtcNow;
             var metadata = result.Games
-                .Where(game => game.Availability != Core.Models.SubscriptionAvailability.Removed)
-                .Select(game => PlayniteGameMapper.Map(game, now))
+                .Where(game =>
+                    game.Availability != Core.Models.SubscriptionAvailability.Removed &&
+                    settingsViewModel.Settings.Includes(game))
+                .Select(game => settingsViewModel.Settings.GamePassPlanSelection.Project(
+                    settingsViewModel.Settings.GamePassConsoleSelection, game))
+                .Select(game => PlayniteGameMapper.Map(
+                    game, now, result.IsVerified, result.CatalogTimestampUtc))
                 .ToList();
             Logger.Info(
-                $"Returning {metadata.Count} PC Game Pass library entries from {result.Source}.");
+                $"Returning {metadata.Count} selected Game Pass library entries from {result.Source}.");
             return metadata;
         }
         catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
         {
-            Logger.Info("PC Game Pass library synchronization was canceled.");
+            Logger.Info("Game Pass library synchronization was canceled.");
             throw;
         }
         catch (Exception exception)
         {
             ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
-            Logger.Error(exception, "PC Game Pass library synchronization failed.");
+            Logger.Error(exception, "Game Pass library synchronization failed.");
             throw;
         }
     }
@@ -103,7 +140,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     {
         if (!settingsViewModel.Settings.PcGamePassEnabled)
         {
-            Logger.Info("PC Game Pass provider is disabled; existing library records were left unchanged.");
+            Logger.Info("Game Pass provider is disabled; existing library records were left unchanged.");
             return Array.Empty<Game>();
         }
 
@@ -117,18 +154,23 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                 .GetResult();
             return libraryReconciler.Reconcile(
                 result,
+                settingsViewModel.Settings.GamePassCatalogSelection,
+                settingsViewModel.Settings.GamePassPlanSelection,
+                settingsViewModel.Settings.GamePassConsoleSelection,
+                settingsViewModel.Settings.ExcludeConfirmedFreeToPlay,
+                settingsViewModel.Settings.UnavailableGameHandling,
                 DateTimeOffset.UtcNow,
                 args.CancelToken);
         }
         catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
         {
-            Logger.Info("PC Game Pass library synchronization was canceled.");
+            Logger.Info("Game Pass library synchronization was canceled.");
             throw;
         }
         catch (Exception exception)
         {
             ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
-            Logger.Error(exception, "PC Game Pass library synchronization failed.");
+            Logger.Error(exception, "Game Pass library synchronization failed.");
             throw;
         }
     }
@@ -148,6 +190,124 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     internal Task<SubscriptionSyncResult> RefreshCatalogAsync() =>
         SynchronizeAsync(true, true, CancellationToken.None);
 
+    private void ShowActiveGamePassGames()
+    {
+        var activeTag = PlayniteApi.Database.Tags.FirstOrDefault(tag =>
+            string.Equals(tag.Name, PlayniteGameMapper.ActiveAccessTag,
+                StringComparison.OrdinalIgnoreCase));
+        if (activeTag is null)
+        {
+            PlayniteApi.Dialogs.ShowMessage(
+                "There are no active Game Pass entries yet. Update the library or use Refresh and Apply.",
+                "Subscription Libraries");
+            return;
+        }
+
+        PlayniteApi.MainView.ApplyFilterPreset(new FilterPreset
+        {
+            Name = "Active Game Pass",
+            Settings = new FilterPresetSettings
+            {
+                UseAndFilteringStyle = true,
+                Library = new IdItemFilterItemProperties(Id),
+                Tag = new IdItemFilterItemProperties(activeTag.Id)
+            }
+        });
+    }
+
+    private async Task RefreshAndApplyFromMenuAsync()
+    {
+        try
+        {
+            var message = await RefreshAndApplyAsync();
+            PlayniteApi.Dialogs.ShowMessage(message, "Subscription Libraries");
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "Game Pass refresh and apply failed.");
+            PlayniteApi.Dialogs.ShowErrorMessage(exception.Message,
+                "Game Pass refresh and apply failed");
+        }
+    }
+
+    private async Task CheckGamePassAvailabilityAsync(Game selected)
+    {
+        try
+        {
+            var result = await SynchronizeAsync(false, false, CancellationToken.None);
+            var candidate = new MatchableGame
+            {
+                GameId = selected.GameId ?? string.Empty,
+                Name = selected.Name ?? string.Empty
+            };
+            var matching = new GameMatchingService();
+            var matches = result.Games
+                .Where(game => game.Availability != SubscriptionAvailability.Removed &&
+                    settingsViewModel.Settings.Includes(game))
+                .Select(game => new
+                {
+                    Game = game,
+                    Match = matching.FindLikelyRelationships(game, new[] { candidate })
+                        .FirstOrDefault()
+                })
+                .Where(item => item.Match is not null)
+                .OrderBy(item => item.Match!.Kind)
+                .ThenByDescending(item => item.Match!.Confidence)
+                .Take(10)
+                .ToList();
+            var freshness = result.IsVerified
+                ? $"Catalog verified {result.CatalogTimestampUtc:u}."
+                : $"Catalog unverified; last cached {result.CatalogTimestampUtc:u}.";
+            var lines = matches.Count == 0
+                ? "No likely match in your selected Game Pass plan/platform."
+                : string.Join("\n", matches.Select(item =>
+                    $"{item.Game.Name} - {item.Game.Platform} - " +
+                    $"{item.Match!.Kind} ({item.Match.Confidence:P0})" +
+                    (item.Game.Availability == SubscriptionAvailability.LeavingSoon
+                        ? " - Leaving soon" : string.Empty)));
+            PlayniteApi.Dialogs.ShowMessage(
+                $"{selected.Name}\n{freshness}\n\n{lines}\n\n" +
+                "Title matches are suggestions only; no records are merged.",
+                "Check Game Pass availability");
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "Could not check Game Pass availability.");
+            PlayniteApi.Dialogs.ShowErrorMessage(exception.Message,
+                "Game Pass availability check failed");
+        }
+    }
+
+    internal async Task<string> RefreshAndApplyAsync()
+    {
+        var result = await RefreshCatalogAsync();
+        if (!result.IsVerified)
+        {
+            throw new InvalidOperationException(
+                "Microsoft's catalog could not be verified. The previous cache remains available, " +
+                "but no library changes were applied. " + result.Warning);
+        }
+
+        var settings = settingsViewModel.Settings;
+        var preview = libraryReconciler.Preview(
+            result, settings.GamePassCatalogSelection, settings.GamePassPlanSelection,
+            settings.GamePassConsoleSelection,
+            settings.ExcludeConfirmedFreeToPlay, settings.UnavailableGameHandling);
+        if (PlayniteApi.Dialogs.ShowMessage(
+                preview, "Game Pass - Refresh and Apply",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return "Catalog refreshed; Playnite library changes were canceled.";
+        }
+
+        var added = libraryReconciler.Reconcile(
+            result, settings.GamePassCatalogSelection, settings.GamePassPlanSelection,
+            settings.GamePassConsoleSelection,
+            settings.ExcludeConfirmedFreeToPlay, settings.UnavailableGameHandling,
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        return $"Game Pass catalog applied. {added.Count:N0} new entries were imported.";
+    }
+
     private async Task<SubscriptionSyncResult> SynchronizeAsync(
         bool forceRefresh,
         bool refreshFromNetwork,
@@ -155,7 +315,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     {
         if (!settingsViewModel.Settings.PcGamePassEnabled)
         {
-            throw new InvalidOperationException("Enable PC Game Pass before refreshing the catalog.");
+            throw new InvalidOperationException("Enable Game Pass before refreshing the catalog.");
         }
 
         await synchronizationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -166,7 +326,8 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             {
                 Region = settings.Region,
                 Language = settings.Language,
-                SiglId = settings.GamePassSiglId
+                SiglId = settings.GamePassSiglId,
+                ConsoleSiglId = settings.ConsoleGamePassSiglId
             }.NormalizeAndValidate();
             var provider = new GamePassProvider(
                 new GamePassCatalogClient(httpClientService, providerOptions),
@@ -190,6 +351,25 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                     cancellationToken)
                 .ConfigureAwait(false);
             ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncResult(result));
+            var newlyLeavingNames = result.NewlyLeavingSoonGames
+                .Where(settings.Includes)
+                .Select(game => settings.GamePassPlanSelection.Project(
+                    settings.GamePassConsoleSelection, game))
+                .Where(game => game.Availability == SubscriptionAvailability.LeavingSoon)
+                .Select(game => game.Name)
+                .OrderBy(name => name)
+                .ToList();
+            if (result.Source == SubscriptionCatalogSource.Live &&
+                settings.NotifyLeavingSoon && newlyLeavingNames.Count > 0)
+            {
+                ScheduleSettingsUpdate(() => PlayniteApi.Notifications.Add(
+                    new NotificationMessage(
+                        $"SubscriptionLibraries.GamePass.LeavingSoon.{result.CatalogTimestampUtc:yyyyMMddHHmm}",
+                        $"{newlyLeavingNames.Count} Game Pass games are leaving soon: " +
+                        string.Join(", ", newlyLeavingNames.Take(5)) +
+                        (newlyLeavingNames.Count > 5 ? ", ..." : string.Empty),
+                        NotificationType.Info)));
+            }
             return result;
         }
         finally

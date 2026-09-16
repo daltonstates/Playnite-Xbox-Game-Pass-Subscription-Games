@@ -3,17 +3,27 @@ using System.Collections.Generic;
 using System.Linq;
 using Playnite.SDK.Models;
 using SubscriptionLibraries.Core.Models;
+using SubscriptionLibraries.Core.Providers.GamePass;
 
 namespace SubscriptionLibraries.Services;
 
 internal static class PlayniteGameMapper
 {
-    private const string ActiveAccessTag = "Access: Subscription";
+    internal const string HiddenBySelectionTag = "Subscription Libraries: Hidden by selection";
+    internal const string ActiveAccessTag = "Access: Subscription";
+    internal const string UnverifiedAccessTag = "Access: Catalog unverified";
+    internal const string VerifiedLinkPrefix = "Catalog verified: ";
     private const string RemovedAccessTag = "Access: Removed";
+    private const string NotSelectedAccessTag = "Access: Outside selected catalog";
+    private const string NotSelectedPlanTag = "Access: Not in selected plan";
+    private const string NotSelectedPlatformTag = "Access: Outside selected platform";
+    private const string ExcludedFreeToPlayTag = "Access: Excluded free-to-play";
     private const string LeavingTag = "Leaving Game Pass";
     private const string RecentlyAddedTag = "Recently Added to Game Pass";
 
-    public static GameMetadata Map(SubscriptionGame game, DateTimeOffset now)
+    public static GameMetadata Map(
+        SubscriptionGame game, DateTimeOffset now,
+        bool verified = true, DateTimeOffset? catalogTimestamp = null)
     {
         if (game is null)
         {
@@ -27,11 +37,8 @@ internal static class PlayniteGameMapper
             Description = game.Description,
             IsInstalled = false,
             Source = new MetadataNameProperty(game.ProviderName),
-            Platforms = new HashSet<MetadataProperty>
-            {
-                new MetadataSpecProperty("pc_windows")
-            },
-            Tags = GetActiveTagNames(game, now)
+            Platforms = GetPlatformProperties(game),
+            Tags = (verified ? GetActiveTagNames(game, now) : GetUnverifiedTagNames(game))
                 .Select(name => (MetadataProperty)new MetadataNameProperty(name))
                 .ToHashSet()
         };
@@ -47,6 +54,12 @@ internal static class PlayniteGameMapper
             {
                 new("Microsoft Store", game.StoreUri.AbsoluteUri)
             };
+        }
+
+        if (catalogTimestamp is DateTimeOffset timestamp)
+        {
+            metadata.Links ??= new List<Link>();
+            metadata.Links.Add(CreateVerificationLink(timestamp));
         }
 
         if (game.ImageUri is not null)
@@ -78,6 +91,17 @@ internal static class PlayniteGameMapper
             GetSubscriptionTag(game.ProviderName),
             ActiveAccessTag
         };
+        AddMembershipTag(tags, game.AccessPlatforms);
+        AddConsoleGenerationTag(tags, game);
+        if (!string.IsNullOrWhiteSpace(game.SubscriptionTier) &&
+            !string.Equals(game.SubscriptionTier, GamePassConstants.SubscriptionTier,
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(game.SubscriptionTier,
+                GamePassPlanSelection.AllCatalogs.DisplayName(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            tags.Add($"Game Pass plan: {game.SubscriptionTier}");
+        }
 
         if (game.Availability == SubscriptionAvailability.LeavingSoon)
         {
@@ -94,6 +118,13 @@ internal static class PlayniteGameMapper
         return tags;
     }
 
+    public static IReadOnlyCollection<string> GetUnverifiedTagNames(SubscriptionGame game) =>
+        new[] { GetSubscriptionTag(game.ProviderName), UnverifiedAccessTag };
+
+    public static Link CreateVerificationLink(DateTimeOffset timestamp) => new(
+        VerifiedLinkPrefix + timestamp.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'"),
+        "https://www.xbox.com/xbox-game-pass/games");
+
     public static IReadOnlyCollection<string> GetRemovedTagNames(string providerName) =>
         new[]
         {
@@ -102,16 +133,121 @@ internal static class PlayniteGameMapper
             $"Left {providerName}"
         };
 
+    public static IReadOnlyCollection<string> GetNotSelectedTagNames(
+        SubscriptionGame game,
+        GamePassPlanSelection plan,
+        bool excludedFreeToPlay = false)
+    {
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            GetSubscriptionTag(game.ProviderName),
+            excludedFreeToPlay
+                ? ExcludedFreeToPlayTag
+                : plan.EligiblePlatforms(game) == SubscriptionPlatforms.None
+                ? NotSelectedPlanTag
+                : NotSelectedPlatformTag
+        };
+        AddMembershipTag(tags, game.AccessPlatforms);
+        AddConsoleGenerationTag(tags, game);
+        return tags;
+    }
+
     public static IReadOnlyCollection<string> GetManagedTagNames(string providerName) =>
         new[]
         {
             GetSubscriptionTag(providerName),
             ActiveAccessTag,
+            UnverifiedAccessTag,
             RemovedAccessTag,
+            NotSelectedAccessTag,
+            NotSelectedPlanTag,
+            NotSelectedPlatformTag,
+            ExcludedFreeToPlayTag,
             LeavingTag,
             RecentlyAddedTag,
-            $"Left {providerName}"
+            $"Left {providerName}",
+            "Subscription: PC Game Pass",
+            "Left PC Game Pass",
+            "Game Pass: PC only",
+            "Game Pass: Xbox only",
+            "Game Pass: PC + Xbox",
+            "Game Pass console: Xbox One",
+            "Game Pass console: Xbox Series X|S",
+            "Game Pass console: Xbox One + Series X|S",
+            "Game Pass plan: PC Game Pass",
+            "Game Pass plan: Xbox Game Pass for Console (legacy)",
+            "Game Pass plan: Xbox Game Pass Essential",
+            "Game Pass plan: Xbox Game Pass Premium",
+            "Game Pass plan: Xbox Game Pass Ultimate",
+            HiddenBySelectionTag
         };
+
+    private static void AddMembershipTag(
+        HashSet<string> tags,
+        SubscriptionPlatforms platforms)
+    {
+        if (platforms == (SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole))
+        {
+            tags.Add("Game Pass: PC + Xbox");
+        }
+        else if (platforms == SubscriptionPlatforms.WindowsPc)
+        {
+            tags.Add("Game Pass: PC only");
+        }
+        else if (platforms == SubscriptionPlatforms.XboxConsole)
+        {
+            tags.Add("Game Pass: Xbox only");
+        }
+    }
+
+    private static void AddConsoleGenerationTag(
+        HashSet<string> tags, SubscriptionGame game)
+    {
+        if ((game.AccessPlatforms & SubscriptionPlatforms.XboxConsole) == 0)
+        {
+            return;
+        }
+
+        switch (game.XboxGenerations)
+        {
+            case XboxConsoleGenerations.XboxOne:
+                tags.Add("Game Pass console: Xbox One");
+                break;
+            case XboxConsoleGenerations.SeriesXorS:
+                tags.Add("Game Pass console: Xbox Series X|S");
+                break;
+            case XboxConsoleGenerations.Both:
+                tags.Add("Game Pass console: Xbox One + Series X|S");
+                break;
+        }
+    }
+
+    internal static HashSet<MetadataProperty> GetPlatformProperties(SubscriptionGame game)
+    {
+        var platforms = new HashSet<MetadataProperty>();
+        if ((game.AccessPlatforms & SubscriptionPlatforms.WindowsPc) != 0)
+        {
+            platforms.Add(new MetadataSpecProperty("pc_windows"));
+        }
+
+        if ((game.AccessPlatforms & SubscriptionPlatforms.XboxConsole) != 0)
+        {
+            if ((game.XboxGenerations & XboxConsoleGenerations.XboxOne) != 0)
+            {
+                platforms.Add(new MetadataNameProperty("Xbox One"));
+            }
+            if ((game.XboxGenerations & XboxConsoleGenerations.SeriesXorS) != 0)
+            {
+                platforms.Add(new MetadataNameProperty("Xbox Series X|S"));
+            }
+            if (game.XboxGenerations == XboxConsoleGenerations.None)
+            {
+                platforms.Add(new MetadataNameProperty("Xbox console"));
+            }
+        }
+
+        return platforms;
+    }
 
     private static string GetSubscriptionTag(string providerName)
     {
