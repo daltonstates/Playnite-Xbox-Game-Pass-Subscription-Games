@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net462;net8.0</TargetFrameworks>
+    <AssemblyName>SubscriptionLibraries.Core</AssemblyName>
+    <RootNamespace>SubscriptionLibraries.Core</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- Playnite 10.x hosts Newtonsoft.Json 10.0.3 and Toolbox intentionally excludes that
+       host assembly from .pext files. Match the host for net462; use the current package
+       for standalone net8 tooling and tests. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <PackageReference Include="Newtonsoft.Json" Version="10.0.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Playnite 10.x loads this exact host assembly and its packer removes private
+         copies. All untrusted JSON reads in this project enforce an explicit depth
+         limit, mitigating GHSA-5crp-9r3c-p9vr's uncontrolled-recursion vector. -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+</Project>

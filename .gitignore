@@ -1,0 +1,29 @@
+## Build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+## Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+## Playnite runtime and plugin state
+Playnite/
+runtime/
+cache/
+logs/
+*.log
+config.json
+
+## Operating system files
+.DS_Store
+Thumbs.db

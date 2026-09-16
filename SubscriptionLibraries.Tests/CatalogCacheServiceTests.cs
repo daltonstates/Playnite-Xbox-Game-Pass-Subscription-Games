@@ -1,0 +1,73 @@
+using SubscriptionLibraries.Core.Services;
+using Xunit;
+
+namespace SubscriptionLibraries.Tests;
+
+public sealed class CatalogCacheServiceTests
+{
+    [Fact]
+    public async Task WritesAtomicallyAndReportsFreshThenExpiredCache()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var cache = new CatalogCacheService(directory.Path, clock: clock);
+        var envelope = CreateEnvelope(clock.UtcNow, "ONE");
+
+        await cache.WriteAsync(envelope);
+        var fresh = cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24));
+
+        Assert.NotNull(fresh);
+        Assert.True(fresh.IsFresh);
+        Assert.Single(fresh.Envelope.Games);
+        Assert.Empty(Directory.GetFiles(directory.Path, "*.tmp"));
+
+        envelope.Games.Add(FakeProvider.Game("TWO"));
+        envelope.ProductIds.Add("TWO");
+        await cache.WriteAsync(envelope);
+        Assert.Empty(Directory.GetFiles(directory.Path, "*.tmp"));
+
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var expired = cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24));
+        Assert.NotNull(expired);
+        Assert.False(expired.IsFresh);
+        Assert.Equal(2, expired.Envelope.Games.Count);
+    }
+
+    [Fact]
+    public void IgnoresMalformedCache()
+    {
+        using var directory = new TemporaryDirectory();
+        var cache = new CatalogCacheService(directory.Path);
+        var path = cache.GetCachePath("fake-provider", "US", "en-US");
+        File.WriteAllText(path, "not-json");
+
+        var result = cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24));
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task IgnoresStructurallyEmptyCacheThatCouldFalselyRemoveLibraryGames()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var cache = new CatalogCacheService(directory.Path, clock: clock);
+        var envelope = CreateEnvelope(clock.UtcNow, "ONE");
+        envelope.Games.Clear();
+
+        await cache.WriteAsync(envelope);
+        var result = cache.TryRead("fake-provider", "US", "en-US", TimeSpan.FromHours(24));
+
+        Assert.Null(result);
+    }
+
+    private static CatalogCacheEnvelope CreateEnvelope(DateTimeOffset timestamp, string id) => new()
+    {
+        ProviderId = "fake-provider",
+        Region = "US",
+        Language = "en-US",
+        CachedAtUtc = timestamp,
+        ProductIds = new List<string> { id },
+        Games = new List<Core.Models.SubscriptionGame> { FakeProvider.Game(id) }
+    };
+}

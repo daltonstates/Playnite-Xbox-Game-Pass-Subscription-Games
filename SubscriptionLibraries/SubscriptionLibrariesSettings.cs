@@ -1,0 +1,327 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using Playnite.SDK;
+using Playnite.SDK.Data;
+using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Services;
+
+namespace SubscriptionLibraries;
+
+public sealed class SubscriptionLibrariesSettings : ObservableObject
+{
+    private bool pcGamePassEnabled = true;
+    private string region = "US";
+    private string language = "en-US";
+    private bool refreshDuringLibraryUpdate = true;
+    private int cacheDurationHours = 24;
+    private string gamePassSiglId = GamePassConstants.PcCatalogSiglId;
+    private DateTime? lastSuccessfulSynchronizationUtc;
+    private int lastPcGamePassGameCount;
+    private string? lastSynchronizationError;
+    private string? lastCatalogSource;
+    private int lastRejectedNonPcCount;
+    private int lastUnclassifiedCount;
+
+    public bool PcGamePassEnabled
+    {
+        get => pcGamePassEnabled;
+        set => SetValue(ref pcGamePassEnabled, value);
+    }
+
+    public string Region
+    {
+        get => region;
+        set => SetValue(ref region, value);
+    }
+
+    public string Language
+    {
+        get => language;
+        set => SetValue(ref language, value);
+    }
+
+    public bool RefreshDuringLibraryUpdate
+    {
+        get => refreshDuringLibraryUpdate;
+        set => SetValue(ref refreshDuringLibraryUpdate, value);
+    }
+
+    public int CacheDurationHours
+    {
+        get => cacheDurationHours;
+        set => SetValue(ref cacheDurationHours, value);
+    }
+
+    public string GamePassSiglId
+    {
+        get => gamePassSiglId;
+        set => SetValue(ref gamePassSiglId, value);
+    }
+
+    public DateTime? LastSuccessfulSynchronizationUtc
+    {
+        get => lastSuccessfulSynchronizationUtc;
+        set => SetValue(ref lastSuccessfulSynchronizationUtc, value);
+    }
+
+    public int LastPcGamePassGameCount
+    {
+        get => lastPcGamePassGameCount;
+        set => SetValue(ref lastPcGamePassGameCount, value);
+    }
+
+    public string? LastSynchronizationError
+    {
+        get => lastSynchronizationError;
+        set => SetValue(ref lastSynchronizationError, value);
+    }
+
+    public string? LastCatalogSource
+    {
+        get => lastCatalogSource;
+        set => SetValue(ref lastCatalogSource, value);
+    }
+
+    public int LastRejectedNonPcCount
+    {
+        get => lastRejectedNonPcCount;
+        set => SetValue(ref lastRejectedNonPcCount, value);
+    }
+
+    public int LastUnclassifiedCount
+    {
+        get => lastUnclassifiedCount;
+        set => SetValue(ref lastUnclassifiedCount, value);
+    }
+}
+
+public sealed class LocaleOption
+{
+    public LocaleOption(string code, string displayName)
+    {
+        Code = code;
+        DisplayName = displayName;
+    }
+
+    public string Code { get; }
+
+    public string DisplayName { get; }
+}
+
+public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, ISettings
+{
+    private readonly SubscriptionLibrariesPlugin plugin;
+    private SubscriptionLibrariesSettings? editingClone;
+    private SubscriptionLibrariesSettings settings;
+    private bool isRefreshing;
+    private bool isEditing;
+    private string? refreshStatus;
+
+    public SubscriptionLibrariesSettingsViewModel(SubscriptionLibrariesPlugin plugin)
+    {
+        this.plugin = plugin ?? throw new ArgumentNullException(nameof(plugin));
+        settings = plugin.LoadPluginSettings<SubscriptionLibrariesSettings>() ??
+            new SubscriptionLibrariesSettings();
+        RepairDefaults(settings);
+        RefreshNowCommand = new RelayCommand(
+            async () => await RefreshNowAsync().ConfigureAwait(true),
+            () => !IsRefreshing);
+    }
+
+    public SubscriptionLibrariesSettings Settings
+    {
+        get => settings;
+        private set
+        {
+            settings = value;
+            OnPropertyChanged();
+            RaiseStatusProperties();
+        }
+    }
+
+    public IReadOnlyList<LocaleOption> Regions { get; } = new[]
+    {
+        new LocaleOption("US", "United States (US)"),
+        new LocaleOption("CA", "Canada (CA)"),
+        new LocaleOption("GB", "United Kingdom (GB)"),
+        new LocaleOption("AU", "Australia (AU)"),
+        new LocaleOption("DE", "Germany (DE)"),
+        new LocaleOption("FR", "France (FR)"),
+        new LocaleOption("JP", "Japan (JP)")
+    };
+
+    public IReadOnlyList<LocaleOption> Languages { get; } = new[]
+    {
+        new LocaleOption("en-US", "English - United States (en-US)"),
+        new LocaleOption("en-GB", "English - United Kingdom (en-GB)"),
+        new LocaleOption("de-DE", "German (de-DE)"),
+        new LocaleOption("fr-FR", "French (fr-FR)"),
+        new LocaleOption("ja-JP", "Japanese (ja-JP)")
+    };
+
+    public ICommand RefreshNowCommand { get; }
+
+    public bool IsRefreshing
+    {
+        get => isRefreshing;
+        private set
+        {
+            SetValue(ref isRefreshing, value);
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    public string? RefreshStatus
+    {
+        get => refreshStatus;
+        private set => SetValue(ref refreshStatus, value);
+    }
+
+    public string LastSuccessfulSynchronizationDisplay =>
+        Settings.LastSuccessfulSynchronizationUtc is DateTime utc
+            ? DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("g")
+            : "Never";
+
+    public string LastGameCountDisplay => Settings.LastPcGamePassGameCount.ToString("N0");
+
+    public string LastSynchronizationErrorDisplay =>
+        string.IsNullOrWhiteSpace(Settings.LastSynchronizationError)
+            ? "None"
+            : Settings.LastSynchronizationError!;
+
+    public string LastDiagnosticsDisplay =>
+        $"Rejected as non-PC: {Settings.LastRejectedNonPcCount:N0}; " +
+        $"unclassified: {Settings.LastUnclassifiedCount:N0}";
+
+    public void BeginEdit()
+    {
+        editingClone = Serialization.GetClone(Settings);
+        isEditing = true;
+    }
+
+    public void CancelEdit()
+    {
+        if (editingClone is not null)
+        {
+            Settings = editingClone;
+        }
+
+        isEditing = false;
+    }
+
+    public void EndEdit()
+    {
+        isEditing = false;
+        plugin.SavePluginSettings(Settings);
+    }
+
+    public bool VerifySettings(out List<string> errors)
+    {
+        errors = new List<string>();
+        if (Settings.CacheDurationHours < 1 || Settings.CacheDurationHours > 720)
+        {
+            errors.Add("Cache duration must be between 1 and 720 hours.");
+        }
+
+        try
+        {
+            _ = new GamePassProviderOptions
+            {
+                Region = Settings.Region,
+                Language = Settings.Language,
+                SiglId = Settings.GamePassSiglId
+            }.NormalizeAndValidate();
+        }
+        catch (ArgumentException exception)
+        {
+            errors.Add(exception.Message);
+        }
+
+        return errors.Count == 0;
+    }
+
+    internal void RecordSyncResult(SubscriptionSyncResult result)
+    {
+        Settings.LastPcGamePassGameCount = result.Games.Count;
+        Settings.LastCatalogSource = result.Source.ToString();
+        if (result.Source == SubscriptionCatalogSource.Live)
+        {
+            Settings.LastSuccessfulSynchronizationUtc = result.CatalogTimestampUtc.UtcDateTime;
+            Settings.LastSynchronizationError = null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.Warning))
+        {
+            Settings.LastSynchronizationError = result.Warning;
+        }
+
+        if (result.Diagnostics is not null)
+        {
+            Settings.LastRejectedNonPcCount = result.Diagnostics.ProductsRejectedAsNonPc;
+            Settings.LastUnclassifiedCount =
+                result.Diagnostics.ProductsThatCouldNotBeClassified +
+                result.Diagnostics.ProductIdsWithoutMetadata;
+        }
+
+        if (!isEditing)
+        {
+            plugin.SavePluginSettings(Settings);
+        }
+        RaiseStatusProperties();
+    }
+
+    internal void RecordSyncError(Exception exception)
+    {
+        Settings.LastSynchronizationError = exception.Message;
+        if (!isEditing)
+        {
+            plugin.SavePluginSettings(Settings);
+        }
+        RaiseStatusProperties();
+    }
+
+    private async Task RefreshNowAsync()
+    {
+        IsRefreshing = true;
+        RefreshStatus = "Refreshing PC Game Pass catalog...";
+        try
+        {
+            var result = await plugin.RefreshCatalogAsync().ConfigureAwait(true);
+            RefreshStatus =
+                $"Catalog refreshed: {result.Games.Count:N0} Windows PC games. " +
+                "Run Update Game Library to apply the refreshed catalog to Playnite.";
+        }
+        catch (Exception exception)
+        {
+            RecordSyncError(exception);
+            RefreshStatus = $"Refresh failed: {exception.Message}";
+            plugin.PlayniteApi.Dialogs.ShowErrorMessage(
+                exception.Message,
+                "PC Game Pass catalog refresh failed");
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
+    }
+
+    private void RaiseStatusProperties()
+    {
+        OnPropertyChanged(nameof(LastSuccessfulSynchronizationDisplay));
+        OnPropertyChanged(nameof(LastGameCountDisplay));
+        OnPropertyChanged(nameof(LastSynchronizationErrorDisplay));
+        OnPropertyChanged(nameof(LastDiagnosticsDisplay));
+    }
+
+    private static void RepairDefaults(SubscriptionLibrariesSettings value)
+    {
+        value.Region = string.IsNullOrWhiteSpace(value.Region) ? "US" : value.Region;
+        value.Language = string.IsNullOrWhiteSpace(value.Language) ? "en-US" : value.Language;
+        value.GamePassSiglId = string.IsNullOrWhiteSpace(value.GamePassSiglId)
+            ? GamePassConstants.PcCatalogSiglId
+            : value.GamePassSiglId;
+        value.CacheDurationHours = value.CacheDurationHours <= 0 ? 24 : value.CacheDurationHours;
+    }
+}

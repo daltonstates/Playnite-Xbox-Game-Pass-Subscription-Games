@@ -1,0 +1,132 @@
+<UserControl x:Class="SubscriptionLibraries.SubscriptionLibrariesSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="620"
+             d:DesignWidth="720">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="16" MaxWidth="760">
+            <TextBlock Text="Subscription Libraries"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="Import temporary subscription access as separate Playnite library entries. No Microsoft sign-in is required."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,16" />
+
+            <GroupBox Header="Subscription Providers" Margin="0,0,0,12">
+                <StackPanel Margin="12">
+                    <CheckBox Content="PC Game Pass"
+                              IsChecked="{Binding Settings.PcGamePassEnabled}"
+                              FontWeight="SemiBold" />
+                    <CheckBox Content="EA Play (source not reliable enough yet)"
+                              IsEnabled="False"
+                              Margin="22,6,0,0" />
+                    <CheckBox Content="Amazon Luna / Prime (source not available yet)"
+                              IsEnabled="False"
+                              Margin="22,4,0,0" />
+                    <CheckBox Content="Ubisoft+ (future provider)"
+                              IsEnabled="False"
+                              Margin="22,4,0,0" />
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Catalog" Margin="0,0,0,12">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Region" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="0" Grid.Column="1"
+                              ItemsSource="{Binding Regions}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Code"
+                              SelectedValue="{Binding Settings.Region}"
+                              Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Language" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding Languages}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="Code"
+                              SelectedValue="{Binding Settings.Language}"
+                              Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Cache duration (hours)" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <TextBox Grid.Row="2" Grid.Column="1"
+                             Width="90"
+                             HorizontalAlignment="Left"
+                             Text="{Binding Settings.CacheDurationHours, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,8" />
+
+                    <CheckBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                              Content="Refresh during Playnite library update"
+                              IsChecked="{Binding Settings.RefreshDuringLibraryUpdate}" />
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Synchronization status" Margin="0,0,0,12">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Last successful synchronization" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LastSuccessfulSynchronizationDisplay}" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="PC Game Pass games found" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastGameCountDisplay}" Margin="0,0,0,6" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Classification diagnostics" Margin="0,0,12,6" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LastDiagnosticsDisplay}" Margin="0,0,0,6" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Last synchronization error" Margin="0,0,12,8" />
+                    <TextBlock Grid.Row="3" Grid.Column="1"
+                               Text="{Binding LastSynchronizationErrorDisplay}"
+                               Margin="0,0,0,8"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
+                        <Button Content="Refresh Now"
+                                Command="{Binding RefreshNowCommand}"
+                                MinWidth="110"
+                                Padding="10,4" />
+                        <TextBlock Text="{Binding RefreshStatus}"
+                                   Margin="12,4,0,0"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="480" />
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+
+            <Expander Header="Advanced catalog settings">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="PC catalog SIGL ID" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <TextBox Grid.Column="1" Text="{Binding Settings.GamePassSiglId, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

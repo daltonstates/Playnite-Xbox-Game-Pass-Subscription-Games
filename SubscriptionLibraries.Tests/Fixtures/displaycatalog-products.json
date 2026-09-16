@@ -1,0 +1,190 @@
+{
+  "Products": [
+    {
+      "ProductId": "PCPACKAGE001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        {
+          "ProductTitle": "Desktop Package Game",
+          "ShortDescription": "A short description.",
+          "ProductDescription": "A longer description.",
+          "DeveloperName": "Example Developer",
+          "PublisherName": "Example Publisher",
+          "Images": [
+            {
+              "ImagePurpose": "Poster",
+              "Uri": "//images.example.test/poster.jpg",
+              "Width": 600,
+              "Height": 900
+            },
+            {
+              "ImagePurpose": "SuperHeroArt",
+              "Uri": "https://images.example.test/hero.jpg",
+              "Width": 1920,
+              "Height": 1080
+            }
+          ]
+        }
+      ],
+      "MarketProperties": [
+        { "OriginalReleaseDate": "2025-02-18T00:00:00Z" }
+      ],
+      "Properties": {
+        "PackageFamilyName": "Example.DesktopGame_123",
+        "PackageIdentityName": "Example.DesktopGame"
+      },
+      "AlternateIds": [
+        { "IdType": "XboxTitleId", "Value": "123456789" }
+      ],
+      "DisplaySkuAvailabilities": [
+        {
+          "Sku": {
+            "SkuId": "0010",
+            "Properties": {
+              "Packages": [
+                {
+                  "PackageFamilyName": "Example.DesktopGame_123",
+                  "PackageFormat": "MSIXVC",
+                  "Architectures": ["x64"],
+                  "PlatformDependencies": [
+                    { "PlatformName": "Windows.Desktop" }
+                  ]
+                }
+              ]
+            }
+          },
+          "Availabilities": []
+        }
+      ]
+    },
+    {
+      "ProductId": "PCPACKAGE001",
+      "LocalizedProperties": [
+        { "ProductTitle": "Duplicate response entry" }
+      ],
+      "DisplaySkuAvailabilities": []
+    },
+    {
+      "ProductId": "PCAVAIL0001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        {
+          "ProductTitle": "Launcher Delivered PC Game",
+          "ProductDescription": "Delivered by a launcher rather than a Store package."
+        }
+      ],
+      "DisplaySkuAvailabilities": [
+        {
+          "Sku": { "SkuId": "0010", "Properties": { "Packages": [] } },
+          "Availabilities": [
+            {
+              "AvailabilityId": "CURRENTPC001",
+              "Actions": ["License", "Browse", "Details"],
+              "Conditions": {
+                "StartDate": "2024-01-01T00:00:00Z",
+                "EndDate": "9998-12-30T00:00:00Z",
+                "ClientConditions": {
+                  "AllowedPlatforms": [
+                    { "PlatformName": "Windows.Desktop" }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ProductId": "CONSOLE0001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        { "ProductTitle": "Console Only Game" }
+      ],
+      "DisplaySkuAvailabilities": [
+        {
+          "Sku": {
+            "SkuId": "0001",
+            "Properties": {
+              "Packages": [
+                {
+                  "PackageFormat": "XVC",
+                  "PlatformDependencies": [
+                    { "PlatformName": "Windows.Xbox" }
+                  ]
+                }
+              ]
+            }
+          },
+          "Availabilities": [
+            {
+              "AvailabilityId": "CONSOLECURRENT",
+              "Actions": ["Fulfill", "Purchase"],
+              "Conditions": {
+                "StartDate": "2024-01-01T00:00:00Z",
+                "ClientConditions": {
+                  "AllowedPlatforms": [
+                    { "PlatformName": "Windows.Xbox" }
+                  ]
+                }
+              }
+            },
+            {
+              "AvailabilityId": "GENERICDETAILS",
+              "Actions": ["License", "Details"],
+              "Conditions": {
+                "StartDate": "1753-01-01T00:00:00Z",
+                "ClientConditions": {
+                  "AllowedPlatforms": [
+                    { "PlatformName": "Windows.Desktop" },
+                    { "PlatformName": "Windows.Core" }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ProductId": "UNKNOWN0001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        { "ProductTitle": "Unclassified Game" }
+      ],
+      "DisplaySkuAvailabilities": []
+    },
+    {
+      "ProductId": "NULLMETA0001",
+      "ProductFamily": "Games",
+      "ProductKind": "Game",
+      "LocalizedProperties": [
+        {
+          "ProductTitle": null,
+          "ProductDescription": null,
+          "Images": null
+        }
+      ],
+      "MarketProperties": null,
+      "Properties": null,
+      "DisplaySkuAvailabilities": [
+        {
+          "Sku": {
+            "Properties": {
+              "Packages": [
+                {
+                  "PlatformDependencies": [
+                    { "PlatformName": "Windows.Desktop" }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
