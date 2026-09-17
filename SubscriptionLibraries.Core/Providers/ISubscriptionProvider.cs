@@ -38,6 +38,13 @@ public sealed class SubscriptionCatalogSnapshot
     public IReadOnlyCollection<string> IncompleteProductIds { get; set; } =
         Array.Empty<string>();
 
+    // Fresh feed membership is needed when product metadata is too incomplete
+    // to normalize a game in the current catalog response.
+    public IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>
+        LeavingSoonPlanPlatformsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+            StringComparer.OrdinalIgnoreCase);
+
     // Source-declared membership can remain known even when product metadata
     // cannot be normalized. Used to avoid preserving a stale platform claim.
     public IReadOnlyDictionary<string, SubscriptionPlatforms> DeclaredPlatformsByProductId { get; set; } =

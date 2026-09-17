@@ -157,7 +157,9 @@ internal sealed class FakeCatalogProvider : ISubscriptionCatalogProvider
         IReadOnlyCollection<string>? incompleteProductIds = null,
         IReadOnlyDictionary<string, SubscriptionPlatforms>? declaredPlatformsByProductId = null,
         IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>?
-            declaredPlanPlatformsByProductId = null) =>
+            declaredPlanPlatformsByProductId = null,
+        IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>?
+            leavingSoonPlanPlatformsByProductId = null) =>
         snapshots.Enqueue(new SubscriptionCatalogSnapshot
         {
             Games = games,
@@ -166,6 +168,9 @@ internal sealed class FakeCatalogProvider : ISubscriptionCatalogProvider
             DeclaredPlatformsByProductId = declaredPlatformsByProductId ??
                 new Dictionary<string, SubscriptionPlatforms>(StringComparer.OrdinalIgnoreCase),
             DeclaredPlanPlatformsByProductId = declaredPlanPlatformsByProductId ??
+                new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+                    StringComparer.OrdinalIgnoreCase),
+            LeavingSoonPlanPlatformsByProductId = leavingSoonPlanPlatformsByProductId ??
                 new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
                     StringComparer.OrdinalIgnoreCase)
         });

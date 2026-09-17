@@ -22,10 +22,11 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
 {
     private bool pcGamePassEnabled = true;
     private GamePassCatalogSelection gamePassCatalogSelection = GamePassCatalogSelection.PcOnly;
-    private GamePassPlanSelection gamePassPlanSelection = GamePassPlanSelection.PcGamePass;
+    private GamePassPlanSelection gamePassPlanSelection = GamePassPlanSelection.Ultimate;
     private GamePassConsoleSelection gamePassConsoleSelection = GamePassConsoleSelection.Both;
     private GamePassInstallApp preferredInstallApp = GamePassInstallApp.XboxApp;
-    private UnavailableGameHandling unavailableGameHandling = UnavailableGameHandling.KeepAndMark;
+    private UnavailableGameHandling unavailableGameHandling =
+        UnavailableGameHandling.RemoveUnplayedAndHideRest;
     private string region = "US";
     private string language = "en-US";
     private bool refreshDuringLibraryUpdate = true;
@@ -366,11 +367,11 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
     public IReadOnlyList<UnavailableHandlingOption> UnavailableHandlingOptions { get; } = new[]
     {
         new UnavailableHandlingOption(UnavailableGameHandling.KeepAndMark,
-            "Keep and mark unavailable (default)"),
+            "Keep and mark unavailable"),
         new UnavailableHandlingOption(UnavailableGameHandling.Hide,
             "Hide unavailable entries (reversible)"),
         new UnavailableHandlingOption(UnavailableGameHandling.RemoveUnplayedAndHideRest,
-            "Remove unplayed entries; hide played/installed entries")
+            "Remove unplayed entries; hide played/installed entries (default)")
     };
 
     public IReadOnlyList<InstallAppOption> InstallAppOptions { get; } = new[]
@@ -563,18 +564,22 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         return errors.Count == 0;
     }
 
-    internal void RecordSyncResult(SubscriptionSyncResult result)
+    internal void RecordSyncResult(
+        SubscriptionSyncResult result, SubscriptionLibrariesSettings viewSettings)
     {
         Settings.LastPcGamePassGameCount = result.Games.Count(game =>
-            game.Availability != SubscriptionAvailability.Removed && Settings.Includes(game));
-        var platform = Settings.GamePassCatalogSelection switch
+            game.Availability != SubscriptionAvailability.Removed && viewSettings.Includes(game));
+        var platform = viewSettings.GamePassCatalogSelection switch
         {
             GamePassCatalogSelection.PcOnly => "PC",
             GamePassCatalogSelection.XboxOnly => "Xbox",
             _ => "PC + Xbox"
         };
-        var generation = ConsoleGenerationEnabled
-            ? Settings.GamePassConsoleSelection switch
+        var consoleGenerationEnabled =
+            viewSettings.GamePassCatalogSelection != GamePassCatalogSelection.PcOnly &&
+            viewSettings.GamePassPlanSelection != GamePassPlanSelection.PcGamePass;
+        var generation = consoleGenerationEnabled
+            ? viewSettings.GamePassConsoleSelection switch
             {
                 GamePassConsoleSelection.XboxOne => " / Xbox One",
                 GamePassConsoleSelection.SeriesXorS => " / Series X|S",
@@ -582,9 +587,9 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             }
             : string.Empty;
         Settings.LastCountViewDescription =
-            $"{Settings.GamePassPlanSelection.DisplayName()} / {platform}{generation} / " +
-            $"{Settings.Region} {Settings.Language}" +
-            (Settings.ExcludeConfirmedFreeToPlay ? " / excluding free-to-play" : string.Empty);
+            $"{viewSettings.GamePassPlanSelection.DisplayName()} / {platform}{generation} / " +
+            $"{viewSettings.Region} {viewSettings.Language}" +
+            (viewSettings.ExcludeConfirmedFreeToPlay ? " / excluding free-to-play" : string.Empty);
         Settings.LastCountCatalogTimestampUtc = result.CatalogTimestampUtc.UtcDateTime;
         Settings.LastCatalogSource = result.Source.ToString();
         if (result.Source == SubscriptionCatalogSource.Live)
@@ -689,7 +694,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         }
         if (!Enum.IsDefined(typeof(GamePassPlanSelection), value.GamePassPlanSelection))
         {
-            value.GamePassPlanSelection = GamePassPlanSelection.PcGamePass;
+            value.GamePassPlanSelection = GamePassPlanSelection.Ultimate;
         }
         if (!Enum.IsDefined(typeof(GamePassConsoleSelection), value.GamePassConsoleSelection))
         {
@@ -701,7 +706,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         }
         if (!Enum.IsDefined(typeof(UnavailableGameHandling), value.UnavailableGameHandling))
         {
-            value.UnavailableGameHandling = UnavailableGameHandling.KeepAndMark;
+            value.UnavailableGameHandling = UnavailableGameHandling.RemoveUnplayedAndHideRest;
         }
         value.CacheDurationHours = value.CacheDurationHours <= 0 ? 24 : value.CacheDurationHours;
     }

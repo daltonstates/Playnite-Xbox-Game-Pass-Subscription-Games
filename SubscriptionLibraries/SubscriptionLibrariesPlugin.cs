@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Playnite.SDK;
+using Playnite.SDK.Data;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using SubscriptionLibraries.Core.Providers.GamePass;
@@ -112,7 +113,8 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
     {
-        if (!settingsViewModel.Settings.PcGamePassEnabled)
+        var settings = CaptureSettings();
+        if (!settings.PcGamePassEnabled)
         {
             Logger.Info("Game Pass provider is disabled; returning no subscription games.");
             return Array.Empty<GameMetadata>();
@@ -121,19 +123,21 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         try
         {
             var result = SynchronizeAsync(
+                    settings,
                     false,
-                    settingsViewModel.Settings.RefreshDuringLibraryUpdate,
+                    settings.RefreshDuringLibraryUpdate,
                     args.CancelToken)
                 .GetAwaiter()
                 .GetResult();
+            EnsureSettingsUnchanged(settings);
             var now = DateTimeOffset.UtcNow;
             var metadata = result.Games
                 .Where(game =>
                     game.Availability != Core.Models.SubscriptionAvailability.Removed &&
-                    settingsViewModel.Settings.Includes(game))
-                .Select(game => settingsViewModel.Settings.GamePassPlanSelection.Project(
-                    settingsViewModel.Settings.GamePassCatalogSelection,
-                    settingsViewModel.Settings.GamePassConsoleSelection, game))
+                    settings.Includes(game))
+                .Select(game => settings.GamePassPlanSelection.Project(
+                    settings.GamePassCatalogSelection,
+                    settings.GamePassConsoleSelection, game))
                 .Select(game => PlayniteGameMapper.Map(
                     game, now, result.IsVerified, result.CatalogTimestampUtc))
                 .ToList();
@@ -156,7 +160,8 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     public override IEnumerable<Game> ImportGames(LibraryImportGamesArgs args)
     {
-        if (!settingsViewModel.Settings.PcGamePassEnabled)
+        var settings = CaptureSettings();
+        if (!settings.PcGamePassEnabled)
         {
             Logger.Info("Game Pass provider is disabled; existing library records were left unchanged.");
             return Array.Empty<Game>();
@@ -165,18 +170,20 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         try
         {
             var result = SynchronizeAsync(
+                    settings,
                     false,
-                    settingsViewModel.Settings.RefreshDuringLibraryUpdate,
+                    settings.RefreshDuringLibraryUpdate,
                     args.CancelToken)
                 .GetAwaiter()
                 .GetResult();
+            EnsureSettingsUnchanged(settings);
             return libraryReconciler.Reconcile(
                 result,
-                settingsViewModel.Settings.GamePassCatalogSelection,
-                settingsViewModel.Settings.GamePassPlanSelection,
-                settingsViewModel.Settings.GamePassConsoleSelection,
-                settingsViewModel.Settings.ExcludeConfirmedFreeToPlay,
-                settingsViewModel.Settings.UnavailableGameHandling,
+                settings.GamePassCatalogSelection,
+                settings.GamePassPlanSelection,
+                settings.GamePassConsoleSelection,
+                settings.ExcludeConfirmedFreeToPlay,
+                settings.UnavailableGameHandling,
                 DateTimeOffset.UtcNow,
                 args.CancelToken);
         }
@@ -204,9 +211,6 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         httpClient.Dispose();
         base.Dispose();
     }
-
-    internal Task<SubscriptionSyncResult> RefreshCatalogAsync() =>
-        SynchronizeAsync(true, true, CancellationToken.None);
 
     private void ShowActiveGamePassGames()
     {
@@ -300,8 +304,9 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     {
         try
         {
-            var result = await SynchronizeAsync(false, false, CancellationToken.None);
-            var settings = settingsViewModel.Settings;
+            var settings = CaptureSettings();
+            var result = await SynchronizeAsync(settings, false, false, CancellationToken.None);
+            EnsureSettingsUnchanged(settings);
             var candidate = new MatchableGame
             {
                 GameId = selected.GameId ?? string.Empty,
@@ -354,7 +359,9 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             throw new ArgumentException(string.Join(" ", errors));
         }
 
-        var result = await RefreshCatalogAsync();
+        var settings = CaptureSettings();
+        var result = await SynchronizeAsync(settings, true, true, CancellationToken.None);
+        EnsureSettingsUnchanged(settings);
         if (!result.IsVerified)
         {
             throw new InvalidOperationException(
@@ -364,8 +371,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
         // The settings button can run before Playnite's settings dialog is saved.
         // Record the verified view before committing it with the library changes.
-        settingsViewModel.RecordSyncResult(result);
-        var settings = settingsViewModel.Settings;
+        settingsViewModel.RecordSyncResult(result, settings);
         var preview = (settingsViewModel.IsEditing
             ? "Applying will also save the current settings, even if you later cancel this settings dialog.\n\n"
             : string.Empty) + libraryReconciler.Preview(
@@ -379,6 +385,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             return "Catalog refreshed; Playnite library changes were canceled.";
         }
 
+        EnsureSettingsUnchanged(settings);
         settingsViewModel.CommitAppliedSettings();
         var added = libraryReconciler.Reconcile(
             result, settings.GamePassCatalogSelection, settings.GamePassPlanSelection,
@@ -389,11 +396,12 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     }
 
     private async Task<SubscriptionSyncResult> SynchronizeAsync(
+        SubscriptionLibrariesSettings settings,
         bool forceRefresh,
         bool refreshFromNetwork,
         CancellationToken cancellationToken)
     {
-        if (!settingsViewModel.Settings.PcGamePassEnabled)
+        if (!settings.PcGamePassEnabled)
         {
             throw new InvalidOperationException("Enable Game Pass before refreshing the catalog.");
         }
@@ -401,7 +409,6 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         await synchronizationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var settings = settingsViewModel.Settings;
             var providerOptions = new GamePassProviderOptions
             {
                 Region = settings.Region,
@@ -431,7 +438,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
-            ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncResult(result));
+            ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncResult(result, settings));
             var newlyLeavingNames = result.NewlyLeavingSoonGames
                 .Where(settings.Includes)
                 .Select(game => settings.GamePassPlanSelection.Project(
@@ -459,6 +466,43 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             synchronizationLock.Release();
         }
     }
+
+    private SubscriptionLibrariesSettings CaptureSettings()
+    {
+        var dispatcher = PlayniteApi.MainView.UIDispatcher;
+        SubscriptionLibrariesSettings Capture() =>
+            Serialization.GetClone(settingsViewModel.Settings);
+        return dispatcher.CheckAccess() ? Capture() : dispatcher.Invoke(Capture);
+    }
+
+    private void EnsureSettingsUnchanged(SubscriptionLibrariesSettings snapshot)
+    {
+        var dispatcher = PlayniteApi.MainView.UIDispatcher;
+        bool Matches() => SameOperationSettings(snapshot, settingsViewModel.Settings);
+        var unchanged = dispatcher.CheckAccess() ? Matches() : dispatcher.Invoke(Matches);
+        if (!unchanged)
+        {
+            throw new InvalidOperationException(
+                "Game Pass settings changed during the catalog operation. Run the update again with the current settings.");
+        }
+    }
+
+    private static bool SameOperationSettings(
+        SubscriptionLibrariesSettings left, SubscriptionLibrariesSettings right) =>
+        left.PcGamePassEnabled == right.PcGamePassEnabled &&
+        left.GamePassCatalogSelection == right.GamePassCatalogSelection &&
+        left.GamePassPlanSelection == right.GamePassPlanSelection &&
+        left.GamePassConsoleSelection == right.GamePassConsoleSelection &&
+        left.PreferredInstallApp == right.PreferredInstallApp &&
+        left.UnavailableGameHandling == right.UnavailableGameHandling &&
+        string.Equals(left.Region, right.Region, StringComparison.Ordinal) &&
+        string.Equals(left.Language, right.Language, StringComparison.Ordinal) &&
+        left.RefreshDuringLibraryUpdate == right.RefreshDuringLibraryUpdate &&
+        left.CacheDurationHours == right.CacheDurationHours &&
+        string.Equals(left.GamePassSiglId, right.GamePassSiglId, StringComparison.Ordinal) &&
+        string.Equals(left.ConsoleGamePassSiglId, right.ConsoleGamePassSiglId, StringComparison.Ordinal) &&
+        left.ExcludeConfirmedFreeToPlay == right.ExcludeConfirmedFreeToPlay &&
+        left.NotifyLeavingSoon == right.NotifyLeavingSoon;
 
     private void ScheduleSettingsUpdate(Action update)
     {

@@ -173,7 +173,23 @@ public sealed class SubscriptionSyncService
                     UpdateDeclaredPlans(preserved, incompleteId, snapshot);
                 }
 
-                preserved.Availability = SubscriptionAvailability.Active;
+                if (snapshot.LeavingSoonStatusKnown)
+                {
+                    preserved.LeavingSoonPlanPlatforms =
+                        snapshot.LeavingSoonPlanPlatformsByProductId.TryGetValue(
+                            incompleteId, out var leavingMemberships)
+                            ? leavingMemberships
+                                .Select(pair => new KeyValuePair<string, SubscriptionPlatforms>(
+                                    pair.Key, pair.Value & preserved.AccessPlatforms))
+                                .Where(pair => pair.Value != SubscriptionPlatforms.None)
+                                .ToDictionary(pair => pair.Key, pair => pair.Value,
+                                    StringComparer.OrdinalIgnoreCase)
+                            : new Dictionary<string, SubscriptionPlatforms>(
+                                StringComparer.OrdinalIgnoreCase);
+                }
+                preserved.Availability = preserved.LeavingSoonPlanPlatforms.Count > 0
+                    ? SubscriptionAvailability.LeavingSoon
+                    : SubscriptionAvailability.Active;
                 preserved.LeavingDate = null;
                 games.Add(preserved);
                 returnedIds.Add(incompleteId);

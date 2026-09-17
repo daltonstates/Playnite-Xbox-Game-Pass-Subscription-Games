@@ -70,6 +70,8 @@ public sealed class GamePassProvider : ISubscriptionCatalogProvider
             LeavingSoonStatusKnown = result.LeavingSoonStatusKnown,
             ProductIds = result.ProductIds,
             IncompleteProductIds = result.IncompleteProductIds,
+            LeavingSoonPlanPlatformsByProductId =
+                result.LeavingSoonPlanPlatformsByProductId,
             DeclaredPlatformsByProductId = result.ProductIds.ToDictionary(
                 id => id,
                 id =>
@@ -176,6 +178,28 @@ public sealed class GamePassProvider : ISubscriptionCatalogProvider
 
         var productIds = pcIds.Concat(consoleIds)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var leavingSoonByProductId =
+            new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+                StringComparer.OrdinalIgnoreCase);
+        foreach (var id in leavingSoonPcIds)
+        {
+            leavingSoonByProductId[id] = new Dictionary<string, SubscriptionPlatforms>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [GamePassPlanSelection.PcGamePass.Key()] = SubscriptionPlatforms.WindowsPc
+            };
+        }
+        foreach (var id in leavingSoonConsoleIds)
+        {
+            if (!leavingSoonByProductId.TryGetValue(id, out var memberships))
+            {
+                memberships = new Dictionary<string, SubscriptionPlatforms>(
+                    StringComparer.OrdinalIgnoreCase);
+                leavingSoonByProductId[id] = memberships;
+            }
+            memberships[GamePassPlanSelection.Ultimate.Key()] =
+                SubscriptionPlatforms.XboxConsole;
+        }
         logger.Info(
             $"Retrieved {pcIds.Count} PC and {consoleIds.Count} Xbox console Game Pass product IDs " +
             $"({productIds.Count} distinct).");
@@ -267,15 +291,11 @@ public sealed class GamePassProvider : ISubscriptionCatalogProvider
 
             if (importedIds.Add(game.ProviderGameId))
             {
-                if (leavingSoonPcIds.Contains(game.ProviderGameId))
+                if (leavingSoonByProductId.TryGetValue(game.ProviderGameId,
+                        out var leavingMemberships))
                 {
-                    game.LeavingSoonPlanPlatforms[GamePassPlanSelection.PcGamePass.Key()] =
-                        SubscriptionPlatforms.WindowsPc;
-                }
-                if (leavingSoonConsoleIds.Contains(game.ProviderGameId))
-                {
-                    game.LeavingSoonPlanPlatforms[GamePassPlanSelection.Ultimate.Key()] =
-                        SubscriptionPlatforms.XboxConsole;
+                    game.LeavingSoonPlanPlatforms = new Dictionary<string, SubscriptionPlatforms>(
+                        leavingMemberships, StringComparer.OrdinalIgnoreCase);
                 }
                 if (game.LeavingSoonPlanPlatforms.Count > 0)
                 {
@@ -326,6 +346,7 @@ public sealed class GamePassProvider : ISubscriptionCatalogProvider
             PcProductIds = pcIds.ToList(),
             ConsoleProductIds = consoleIds.ToList(),
             ProductIds = productIds,
+            LeavingSoonPlanPlatformsByProductId = leavingSoonByProductId,
             DeclaredPlanPlatformsByProductId = planPlatformsByProductId,
             DeclaredPlanGenerationsByProductId = planGenerationsByProductId,
             IncompleteProductIds = incompleteIds.ToList(),

@@ -156,6 +156,65 @@ public sealed class SubscriptionSyncServiceTests
         Assert.Equal("LEAVES", Assert.Single(stored.Envelope.RemovedGames).ProviderGameId);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IncompleteMetadataUsesCurrentVerifiedLeavingSoonMembership(
+        bool stillLeaving)
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        var game = FakeProvider.Game("INCOMPLETE");
+        game.AccessPlatforms = SubscriptionPlatforms.WindowsPc;
+        game.PlanPlatforms[GamePassPlanSelection.PcGamePass.Key()] =
+            SubscriptionPlatforms.WindowsPc;
+        game.Availability = SubscriptionAvailability.LeavingSoon;
+        game.LeavingSoonPlanPlatforms[GamePassPlanSelection.PcGamePass.Key()] =
+            SubscriptionPlatforms.WindowsPc;
+        provider.Return(new[] { game, FakeProvider.Game("STAYS") },
+            new[] { "INCOMPLETE", "STAYS" });
+        var currentLeaving = new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+            StringComparer.OrdinalIgnoreCase);
+        if (stillLeaving)
+        {
+            currentLeaving["INCOMPLETE"] = new Dictionary<string, SubscriptionPlatforms>
+            {
+                [GamePassPlanSelection.PcGamePass.Key()] = SubscriptionPlatforms.WindowsPc
+            };
+        }
+        provider.Return(new[] { FakeProvider.Game("STAYS") },
+            new[] { "INCOMPLETE", "STAYS" },
+            new[] { "INCOMPLETE" },
+            new Dictionary<string, SubscriptionPlatforms>
+            {
+                ["INCOMPLETE"] = SubscriptionPlatforms.WindowsPc
+            },
+            new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>
+            {
+                ["INCOMPLETE"] = new Dictionary<string, SubscriptionPlatforms>
+                {
+                    [GamePassPlanSelection.PcGamePass.Key()] = SubscriptionPlatforms.WindowsPc
+                }
+            },
+            currentLeaving);
+        var service = CreateService(directory, clock);
+        await service.SynchronizeAsync(provider, Options());
+
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var result = await service.SynchronizeAsync(provider, Options());
+        var preserved = Assert.Single(result.Games,
+            item => item.ProviderGameId == "INCOMPLETE");
+
+        Assert.Equal(stillLeaving ? SubscriptionAvailability.LeavingSoon
+            : SubscriptionAvailability.Active, preserved.Availability);
+        Assert.Equal(preserved.Availability,
+            GamePassPlanSelection.PcGamePass.Project(
+                GamePassCatalogSelection.PcOnly, GamePassConsoleSelection.Both,
+                preserved).Availability);
+        Assert.Equal(stillLeaving, preserved.LeavingSoonPlanPlatforms.Count > 0);
+    }
+
     [Fact]
     public async Task IncompleteMetadataDoesNotPreservePcAccessAfterPcCatalogDeparture()
     {

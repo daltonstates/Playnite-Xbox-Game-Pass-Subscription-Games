@@ -297,6 +297,11 @@ public sealed class GamePassCatalogResult
     public IReadOnlyList<string> ProductIds { get; set; } = Array.Empty<string>();
 
     public IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>
+        LeavingSoonPlanPlatformsByProductId { get; set; } =
+        new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
+            StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>
         DeclaredPlanPlatformsByProductId { get; set; } =
         new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
             StringComparer.OrdinalIgnoreCase);

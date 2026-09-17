@@ -188,7 +188,7 @@ internal static class Program
         Console.WriteLine("  --language <tag>      Language tag (default: en-US)");
         Console.WriteLine("  --selection <value>   pc, xbox, or both (default: pc)");
         Console.WriteLine("  --xbox-generation <value> both, one, or series (default: both)");
-        Console.WriteLine("  --plan <value>        pc, console, essential, premium, ultimate, or all (default: pc)");
+        Console.WriteLine("  --plan <value>        pc, console, essential, premium, ultimate, or all (default: ultimate)");
         Console.WriteLine("  --sigl-id <guid>      Override the PC catalog collection ID");
         Console.WriteLine("  --console-sigl-id <guid> Override the Xbox console collection ID");
         Console.WriteLine("  --include-rejected    Print products with failed PC classification");
@@ -209,7 +209,7 @@ internal sealed class CommandLineOptions
 
     public GamePassCatalogSelection Selection { get; private set; } = GamePassCatalogSelection.PcOnly;
 
-    public GamePassPlanSelection Plan { get; private set; } = GamePassPlanSelection.PcGamePass;
+    public GamePassPlanSelection Plan { get; private set; } = GamePassPlanSelection.Ultimate;
 
     public GamePassConsoleSelection ConsoleSelection { get; private set; } =
         GamePassConsoleSelection.Both;

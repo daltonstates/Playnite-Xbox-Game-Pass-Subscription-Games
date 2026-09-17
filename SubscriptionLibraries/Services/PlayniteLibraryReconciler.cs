@@ -62,9 +62,7 @@ internal sealed class PlayniteLibraryReconciler
             !ownedIds.Contains(game.ProviderGameId) &&
             playniteApi.Database.ImportExclusions[
                 ImportExclusionItem.GetId(game.ProviderGameId, plugin.Id)] is null);
-        var markerIds = new HashSet<Guid>(playniteApi.Database.Tags
-            .Where(tag => tag.Name == PlayniteGameMapper.HiddenBySelectionTag)
-            .Select(tag => tag.Id));
+        var markerIds = GetManagedHiddenTagIds();
         var unavailable = owned.Where(game =>
             string.IsNullOrWhiteSpace(game.GameId) || !selectedIds.Contains(game.GameId))
             .ToList();
@@ -137,11 +135,7 @@ internal sealed class PlayniteLibraryReconciler
         var addedGames = new List<Game>();
         var gamesToUpdate = new List<Game>();
         var deletedIds = new HashSet<Guid>();
-        var managedHiddenTagIds = new HashSet<Guid>(playniteApi.Database.Tags
-            .Where(tag => string.Equals(tag.Name,
-                PlayniteGameMapper.HiddenBySelectionTag,
-                StringComparison.OrdinalIgnoreCase))
-            .Select(tag => tag.Id));
+        var managedHiddenTagIds = GetManagedHiddenTagIds();
         var activeStatusUpdates = 0;
         var platformUpdates = 0;
         var restoredVisibilityCount = 0;
@@ -225,6 +219,7 @@ internal sealed class PlayniteLibraryReconciler
                 excludeConfirmedFreeToPlay && unselectedGame.IsConfirmedFreeToPlay);
             foreach (var existingGame in ownedByProviderId[unselectedGame.ProviderGameId])
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var action = HandleUnavailable(
                     existingGame, desiredTags, unselectedGame.ProviderName,
                     unavailableHandling, catalogIsFresh, managedHiddenTagIds,
@@ -249,6 +244,7 @@ internal sealed class PlayniteLibraryReconciler
                      game => string.IsNullOrWhiteSpace(game.GameId) ||
                          !activeIds.Contains(game.GameId)))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var action = HandleUnavailable(
                 departedGame, removedTags, GamePassConstants.ProviderName,
                 unavailableHandling, catalogIsFresh, managedHiddenTagIds,
@@ -477,6 +473,12 @@ internal sealed class PlayniteLibraryReconciler
         Game game,
         HashSet<Guid> managedHiddenTagIds) =>
         game.TagIds?.Any(managedHiddenTagIds.Contains) == true;
+
+    private HashSet<Guid> GetManagedHiddenTagIds() => new(playniteApi.Database.Tags
+        .Where(tag => string.Equals(tag.Name,
+            PlayniteGameMapper.HiddenBySelectionTag,
+            StringComparison.OrdinalIgnoreCase))
+        .Select(tag => tag.Id));
 
     private bool ApplyManagedTags(
         Game game,

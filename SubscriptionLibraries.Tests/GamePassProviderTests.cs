@@ -84,6 +84,9 @@ public sealed class GamePassProviderTests
             snapshot.DeclaredPlanPlatformsByProductId["PCAVAIL0001"][
                 GamePassPlanSelection.Essential.Key()]);
         Assert.True(snapshot.LeavingSoonStatusKnown);
+        Assert.Equal(SubscriptionPlatforms.WindowsPc,
+            snapshot.LeavingSoonPlanPlatformsByProductId["PCPACKAGE001"][
+                GamePassPlanSelection.PcGamePass.Key()]);
         Assert.Equal(XboxConsoleGenerations.Both,
             snapshot.DeclaredPlanGenerationsByProductId["PCPACKAGE001"][
                 GamePassPlanSelection.Ultimate.Key()]);

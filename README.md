@@ -9,7 +9,7 @@ For example, if you own a game on Steam and it also appears in Game Pass, Playni
 ## What it does
 
 - Imports PC and Xbox console Game Pass catalog games as separate, uninstalled entries with a **Game Pass** source, subscription tags, a Microsoft Store link, and available artwork and metadata.
-- Lets you choose a plan, PC or Xbox platforms, Xbox One or Series X|S generations, and a region. The default is **PC Game Pass / PC games / United States**.
+- Lets you choose a plan, PC or Xbox platforms, Xbox One or Series X|S generations, and a region. The default for new settings is **Xbox Game Pass Ultimate / PC games / United States**.
 - Marks games that are leaving soon, have left the catalog, or no longer match your selected view. Newly detected additions can receive a temporary **Recently Added to Game Pass** tag.
 - Offers a **Show active Game Pass games** menu filter, a per-game **Check Game Pass availability** action, and a **Refresh and Apply** action that previews library changes.
 - Opens an eligible PC game's product page from its Playnite right-click menu. Choose the Xbox app (default) or Microsoft Store once in settings, then choose **Install** in that app.
@@ -60,9 +60,9 @@ This setting applies only to entries owned by this extension when a game leaves 
 
 | Setting | Result |
 | --- | --- |
-| **Keep and mark unavailable** (default) | Leave the entry visible with its new status. |
+| **Keep and mark unavailable** | Leave the entry visible with its new status. |
 | **Hide unavailable entries** | Hide it without deleting your play history or edits; show it again if it becomes eligible. Entries you hid yourself stay hidden. |
-| **Remove unplayed entries; hide played/installed entries** | Permanently remove eligible unplayed, uninstalled, idle entries. Hide played, installed, busy, or user-hidden entries instead. Removal loses edits to that Game Pass entry. |
+| **Remove unplayed entries; hide played/installed entries** (default for new settings) | Permanently remove eligible unplayed, uninstalled, idle entries. Hide played, installed, busy, or user-hidden entries instead. Removal loses edits to that Game Pass entry. |
 
 The extension does not delete entries based on an unverified catalog. It also leaves records from Steam, Xbox, and other libraries untouched. If you manually delete one of its entries, Playnite's import exclusion prevents the extension from recreating it automatically.
 
@@ -79,7 +79,7 @@ Catalog requests send the selected market, language, public collection IDs, and 
 ## Troubleshooting
 
 - **No games appear:** Confirm Game Pass is enabled, choose a compatible plan and platform, save, then update this extension's library. PC Game Pass does not include an Xbox console catalog.
-- **An older entry is still visible:** The default policy keeps unavailable entries with a status tag. Choose **Hide** or **Remove unplayed entries; hide played/installed entries**, save, and update the library if you want cleanup.
+- **An older entry is still visible:** Check your unavailable-entry policy. **Keep and mark unavailable** leaves it visible; the default policy removes eligible unplayed entries and hides played, installed, busy, or user-hidden entries. Saved choices from earlier versions are retained.
 - **Catalog unverified or refresh failed:** Check the last error in settings and Playnite's logs. The old catalog remains visible, but library changes wait for a successful verification. Use **Refresh and Apply...** when connectivity returns.
 - **A game is missing from your view:** Check the region, plan, platform, and Xbox generation. You can use the [catalog diagnostic tool](#catalog-diagnostic-tool) to inspect current source data.
 - **The wrong country's catalog appears:** Set both Region and Language, save, then use **Refresh and Apply...**. Caches are separate by market and language.
