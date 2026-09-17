@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -81,14 +82,30 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
     {
-        if (args.Games?.Count == 1 && settingsViewModel.Settings.PcGamePassEnabled)
+        if (args.Games?.Count != 1 || !settingsViewModel.Settings.PcGamePassEnabled)
         {
+            yield break;
+        }
+
+        var selected = args.Games[0];
+        yield return new GameMenuItem
+        {
+            Description = "Check Game Pass availability",
+            MenuSection = "@Subscription Libraries",
+            Action = async action => await CheckGamePassAvailabilityAsync(
+                action.Games.First())
+        };
+
+        if (CanOpenPcInstallPage(selected))
+        {
+            var installApp = settingsViewModel.Settings.PreferredInstallApp;
+            var appName = installApp == GamePassInstallApp.MicrosoftStore
+                ? "Microsoft Store" : "Xbox app";
             yield return new GameMenuItem
             {
-                Description = "Check Game Pass availability",
+                Description = $"Open {appName} page to install...",
                 MenuSection = "@Subscription Libraries",
-                Action = async action => await CheckGamePassAvailabilityAsync(
-                    action.Games.First())
+                Action = _ => OpenPcInstallPage(selected, installApp)
             };
         }
     }
@@ -216,6 +233,54 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         });
     }
 
+    private bool CanOpenPcInstallPage(Game game)
+    {
+        if (game.PluginId != Id || game.IsInstalled ||
+            GamePassProductPages.FromProductId(game.GameId) is null ||
+            game.TagIds is null)
+        {
+            return false;
+        }
+
+        var tagIds = new HashSet<Guid>(game.TagIds);
+        var tagNames = new HashSet<string>(PlayniteApi.Database.Tags
+            .Where(tag => tagIds.Contains(tag.Id))
+            .Select(tag => tag.Name), StringComparer.OrdinalIgnoreCase);
+        return tagNames.Contains(PlayniteGameMapper.ActiveAccessTag) &&
+               (tagNames.Contains(PlayniteGameMapper.PcOnlyMembershipTag) ||
+                tagNames.Contains(PlayniteGameMapper.PcAndXboxMembershipTag));
+    }
+
+    private void OpenPcInstallPage(Game game, GamePassInstallApp installApp)
+    {
+        if (!CanOpenPcInstallPage(game))
+        {
+            PlayniteApi.Dialogs.ShowMessage(
+                "This game is not currently marked as an uninstalled PC game in your selected Game Pass view. Refresh the library and try again.",
+                "Game Pass install page unavailable");
+            return;
+        }
+
+        var pages = GamePassProductPages.FromProductId(game.GameId)!;
+        var useXboxApp = installApp != GamePassInstallApp.MicrosoftStore;
+        var appName = useXboxApp ? "Xbox app" : "Microsoft Store";
+        var uri = useXboxApp ? pages.XboxApp : pages.MicrosoftStore;
+        try
+        {
+            using var launched = Process.Start(new ProcessStartInfo(uri.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, $"Could not open the {appName} page for {game.GameId}.");
+            PlayniteApi.Dialogs.ShowErrorMessage(
+                $"Could not open the {appName} product page. Check that the app is installed, or choose the other app in extension settings.\n\n{exception.Message}",
+                "Game Pass install page unavailable");
+        }
+    }
+
     private async Task RefreshAndApplyFromMenuAsync()
     {
         try
@@ -284,6 +349,11 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     internal async Task<string> RefreshAndApplyAsync()
     {
+        if (!settingsViewModel.VerifySettings(out var errors))
+        {
+            throw new ArgumentException(string.Join(" ", errors));
+        }
+
         var result = await RefreshCatalogAsync();
         if (!result.IsVerified)
         {
@@ -292,8 +362,13 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                 "but no library changes were applied. " + result.Warning);
         }
 
+        // The settings button can run before Playnite's settings dialog is saved.
+        // Record the verified view before committing it with the library changes.
+        settingsViewModel.RecordSyncResult(result);
         var settings = settingsViewModel.Settings;
-        var preview = libraryReconciler.Preview(
+        var preview = (settingsViewModel.IsEditing
+            ? "Applying will also save the current settings, even if you later cancel this settings dialog.\n\n"
+            : string.Empty) + libraryReconciler.Preview(
             result, settings.GamePassCatalogSelection, settings.GamePassPlanSelection,
             settings.GamePassConsoleSelection,
             settings.ExcludeConfirmedFreeToPlay, settings.UnavailableGameHandling);
@@ -304,6 +379,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             return "Catalog refreshed; Playnite library changes were canceled.";
         }
 
+        settingsViewModel.CommitAppliedSettings();
         var added = libraryReconciler.Reconcile(
             result, settings.GamePassCatalogSelection, settings.GamePassPlanSelection,
             settings.GamePassConsoleSelection,

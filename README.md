@@ -1,65 +1,92 @@
 # Subscription Libraries for Playnite
 
-Subscription Libraries is a Playnite library extension that makes games available through temporary gaming subscriptions searchable beside games you own. Version 1.3.0 imports **PC and Xbox console Game Pass** games with independent subscription-plan, platform, and console-generation filters, as separate, clearly labeled, uninstalled Playnite entries. It can also hide or clean up entries that are no longer in your selected view.
+**Browse Game Pass games beside the games you own in Playnite.** Choose a Game Pass plan and a PC or Xbox view, then update your library. The extension adds separate, clearly labeled catalog entries so you can search, filter, and discover games available through that subscription.
 
-It never merges with or modifies Steam, Epic, GOG, Amazon, Xbox, or other library records. If you own a game on Steam and can also access it through Game Pass, both records can coexist.
+These entries represent **regional catalog availability**, not games you own or proof that your Microsoft account can play them. The extension does not sign in to Microsoft, download or track installed games, or change records from your other Playnite libraries.
 
-> **Screenshot placeholder:** settings page and an example search showing owned and Game Pass records side by side will be added before an add-on database release.
+For example, if you own a game on Steam and it also appears in Game Pass, Playnite can show both entries. If it later leaves Game Pass, only this extension's Game Pass entry changes; your Steam entry stays as it was.
 
-## Current status
+## What it does
 
-- Production provider: Game Pass, with independent plan (PC Game Pass, Essential, Premium, Ultimate, legacy Console, or all catalogs), platform (PC, Xbox console, or both), and Xbox generation (Xbox One, Series X|S, or both) selections
-- QOL: last-verified status, one-click refresh/apply with a change preview, active-only quick filter, leaving-soon alerts, conservative free-to-play exclusion, and a per-game availability check
-- Default market/language: United States (`US`), English (`en-US`)
-- Authentication: none
-- Cache lifetime: 24 hours
-- Playnite SDK: 6.17.0
-- Plugin target: .NET Framework 4.6.2
+- Imports PC and Xbox console Game Pass catalog games as separate, uninstalled entries with a **Game Pass** source, subscription tags, a Microsoft Store link, and available artwork and metadata.
+- Lets you choose a plan, PC or Xbox platforms, Xbox One or Series X|S generations, and a region. The default is **PC Game Pass / PC games / United States**.
+- Marks games that are leaving soon, have left the catalog, or no longer match your selected view. Newly detected additions can receive a temporary **Recently Added to Game Pass** tag.
+- Offers a **Show active Game Pass games** menu filter, a per-game **Check Game Pass availability** action, and a **Refresh and Apply** action that previews library changes.
+- Opens an eligible PC game's product page from its Playnite right-click menu. Choose the Xbox app (default) or Microsoft Store once in settings, then choose **Install** in that app.
 
-The live US validation on 2026-09-16 retrieved 905 distinct products across the broad and plan-specific catalogs. All 905 resolved: 600 had verified PC access, 623 had console-catalog access, and 318 shared one product ID across PC and console. Six broad PC-catalog entries lacked Windows evidence, so they are not labeled PC-accessible. The plan-specific lists returned 558 PC Game Pass PC games; Essential 86 PC/93 Xbox; Premium 412 PC/436 Xbox; Ultimate 600 PC/623 Xbox; and legacy Console 501 Xbox. The Ultimate generation-specific collections returned 430 Xbox One and 622 Series X|S IDs. Both Leaving Soon feeds were valid and empty at that check. Counts are expected to change.
+Game Pass is the only enabled provider. Selecting **All catalogs** is useful for discovery, but it ignores plan membership and does not describe what your own subscription grants.
 
-## Requirements
+## Get started
 
-- Playnite 10.60 (current stable during verification) or a later version compatible with PlayniteSDK 6.17.0
-- Windows supported by Playnite
-- Internet access for catalog refreshes
-- No Xbox username, Microsoft password, OAuth login, or API key
+This project is not yet in Playnite's add-on browser. Build a `.pext` package from source using [Build and package from source](#build-and-package-from-source), or use a package you already have.
 
-For source builds:
+1. Open the `.pext` file with Playnite, confirm installation, and restart Playnite.
+2. Open **Add-ons > Extension settings > Libraries > Subscription Libraries - Game Pass**.
+3. Leave Game Pass enabled. Choose your plan, the PC/Xbox games to show, and an Xbox generation if your view includes console games. Choose a region and language if the defaults do not fit you, then save.
+4. Run **Update Game Library** and select **Subscription Libraries - Game Pass**.
 
-- Visual Studio 2022 with the .NET desktop development workload, or a current .NET SDK capable of building `net462` and `net8.0`
-- PowerShell for the packaging script
-- `Toolbox.exe` from a current Playnite installation to create `.pext` packages
+Your plan and platform choices are independent. **PC Game Pass + Xbox-only** and **legacy Xbox Game Pass for Console + PC-only** produce empty views. The settings page points out these combinations and disables the Xbox generation control when it cannot affect the view.
 
-### Visual Studio 2022 setup
+The extension does not remove entries created by another Xbox or Game Pass plugin. If you use one, you may see duplicate titles until you disable that plugin's updates or manage its records yourself.
 
-1. Install Visual Studio 2022 with the **.NET desktop development** workload and the .NET Framework 4.6.2 targeting pack.
-2. Open `SubscriptionLibraries.sln` and restore NuGet packages when prompted.
-3. Select `Debug` or `Release` for `Any CPU`, then choose **Build > Build Solution**.
-4. Use Test Explorer for the fixture suite; the live integration test remains opt-in and is not contacted by a normal test run.
+## Use it day to day
 
-## Install
+**Update Game Library** uses your saved settings and normally checks the catalog when its cache expires. The default cache lifetime is 24 hours. Changing only the plan or platform can reuse a fresh catalog; changing the region, language, or advanced catalog IDs requires a new one.
 
-### Packaged extension
+Use **Refresh and Apply...** in the extension settings or the Playnite **Subscription Libraries** menu when you want a fresh catalog now. It previews additions, hiding, and permanent removals before you confirm. When run from the settings dialog, confirming also saves the settings being applied, even if you later cancel that dialog. A normal library update applies your chosen cleanup policy without that preview.
 
-1. Open the generated `.pext` file with Playnite.
-2. Confirm the installation and restart Playnite.
-3. Open **Add-ons > Extension settings > Libraries > Subscription Libraries - Game Pass**.
-4. Leave Game Pass enabled. Choose your subscription plan, then independently choose **PC games only**, **Xbox console games only**, or **PC and Xbox console games**. If including Xbox, choose Xbox One, Series X|S, or both. Choose what to do with unavailable entries, then choose a market/language and save. PC Game Pass plus PC-only is the default; choosing PC Game Pass plus Xbox-only correctly yields no games.
-5. Run **Update Game Library** and select the **Subscription Libraries - Game Pass** library.
+The settings page shows the last checked game count with the plan, platform, region, language, and catalog verification time used to calculate it. After changing settings, refresh or update the library to get a count for the new view.
 
-This project is not yet listed in Playnite's add-on browser. Install the `.pext` locally; publication to the Playnite add-on database is intentionally on hold.
+The **Show active Game Pass games** menu item temporarily filters Playnite to active entries from this extension. Right-click a single game and choose **Check Game Pass availability** for likely matches in your selected view. Title matches are suggestions; the extension does not merge records.
 
-If you use another Xbox/Game Pass library plugin, this extension now appears under its distinct **Subscription Libraries - Game Pass** name in Playnite's library list. Disable the other plugin's library updates after confirming this one works. This extension does not delete or modify that other plugin's existing records; Playnite may show duplicates until you remove or hide them yourself.
+Under **Preferred install app** in extension settings, choose **Xbox app** (default) or **Microsoft Store**. For an active Game Pass entry with PC access, right-click and use the single install-page action, which names your selected app. The app opens the game's product page; you sign in and start the installation there. If that app is unavailable, change the preference. Console-only and unavailable entries do not offer this action. The extension does not start the download, detect when it finishes, or change the catalog entry's installed status. Your installed game may appear separately through Playnite's Xbox integration.
 
-### Developer installation
+## Understand availability
 
-1. Build the Debug configuration.
-2. In Playnite, open **Settings > For developers**.
-3. Add `SubscriptionLibraries/bin/Debug/net462` as a development plugin path.
-4. Restart Playnite after each plugin rebuild; managed plugins cannot be reloaded in-process.
+| What you see | Meaning |
+| --- | --- |
+| **Access: Subscription** | The last verified catalog places the game in your selected plan and platform view. |
+| **Leaving Game Pass** | A relevant public Leaving Soon collection includes it. The collection does not provide a dependable departure date. |
+| **Access: Not in selected plan** or **Access: Outside selected platform** | You previously imported the game, but it is outside your current view. This does not mean it left Game Pass. |
+| **Access: Excluded free-to-play** | Your optional free-to-play filter excluded a previously imported entry using clear Store pricing evidence. |
+| **Access: Removed** | A verified refresh found that a previously cataloged game is no longer in the Game Pass collections. |
+| **Access: Catalog unverified** | The extension is showing an older catalog after a failed or overdue verification. Treat availability as historical until refresh succeeds. |
 
-## Build and test
+Leaving Soon warnings come from the PC Game Pass feed for PC games and the Ultimate feed for console games. They appear only when that platform is in your selected view; the extension does not infer warnings for other plans or invent leaving dates. A game's first appearance after the initial catalog baseline can be marked as recently added; the first import is not treated as a batch of new releases.
+
+### Choose what happens to unavailable entries
+
+This setting applies only to entries owned by this extension when a game leaves Game Pass or falls outside your selected view:
+
+| Setting | Result |
+| --- | --- |
+| **Keep and mark unavailable** (default) | Leave the entry visible with its new status. |
+| **Hide unavailable entries** | Hide it without deleting your play history or edits; show it again if it becomes eligible. Entries you hid yourself stay hidden. |
+| **Remove unplayed entries; hide played/installed entries** | Permanently remove eligible unplayed, uninstalled, idle entries. Hide played, installed, busy, or user-hidden entries instead. Removal loses edits to that Game Pass entry. |
+
+The extension does not delete entries based on an unverified catalog. It also leaves records from Steam, Xbox, and other libraries untouched. If you manually delete one of its entries, Playnite's import exclusion prevents the extension from recreating it automatically.
+
+## What the catalog can and cannot tell you
+
+The extension reads Microsoft's public regional Game Pass collections and Store product metadata. It uses Microsoft product IDs to track entries and requires Windows evidence before labeling a game as available on PC. PC and console editions can have different IDs, so similar titles may appear as separate entries.
+
+It does **not** check your account, subscription payment, family sharing, trials, purchases, or personal entitlements. A catalog listing can include a free-to-play game or a game with plan-specific benefits; it does not prove that payment is required to play it. The optional free-to-play filter excludes only titles with clear zero-price evidence and leaves ambiguous ones visible. The install-page links are a handoff to Microsoft apps, not a Playnite-managed installation or game launch action.
+
+The catalog endpoints are public-facing but are not guaranteed as a third-party API. If an endpoint fails, a previous cache can remain visible with **Catalog unverified** status; that fallback cannot add, hide, restore, or delete entries. The extension also rejects unexpectedly large catalog drops so an incomplete upstream response cannot trigger cleanup. See [architecture](docs/ARCHITECTURE.md) and the dated [research and live diagnostics](docs/RESEARCH.md) for source details and point-in-time counts.
+
+Catalog requests send the selected market, language, public collection IDs, and public product IDs. The extension does not request credentials or store tokens.
+
+## Troubleshooting
+
+- **No games appear:** Confirm Game Pass is enabled, choose a compatible plan and platform, save, then update this extension's library. PC Game Pass does not include an Xbox console catalog.
+- **An older entry is still visible:** The default policy keeps unavailable entries with a status tag. Choose **Hide** or **Remove unplayed entries; hide played/installed entries**, save, and update the library if you want cleanup.
+- **Catalog unverified or refresh failed:** Check the last error in settings and Playnite's logs. The old catalog remains visible, but library changes wait for a successful verification. Use **Refresh and Apply...** when connectivity returns.
+- **A game is missing from your view:** Check the region, plan, platform, and Xbox generation. You can use the [catalog diagnostic tool](#catalog-diagnostic-tool) to inspect current source data.
+- **The wrong country's catalog appears:** Set both Region and Language, save, then use **Refresh and Apply...**. Caches are separate by market and language.
+
+## Build and package from source
+
+The plugin targets Playnite 10.x with PlayniteSDK 6.17.0 and .NET Framework 4.6.2. It was validated against Playnite 10.60 at the 2026-09-16 research checkpoint. Building requires Windows and either Visual Studio 2022 with the .NET desktop workload and .NET Framework 4.6.2 targeting pack, or a .NET SDK that can build `net462` and `net8.0`.
 
 From the repository root:
 
@@ -69,115 +96,30 @@ dotnet build .\SubscriptionLibraries.sln -c Debug
 dotnet test .\SubscriptionLibraries.Tests\SubscriptionLibraries.Tests.csproj -c Debug
 ```
 
-The normal suite uses sanitized local JSON fixtures and does not contact Microsoft. To opt into the live integration test:
+The normal tests use local fixtures and do not contact Microsoft. To run the live integration test:
 
 ```powershell
 $env:SUBSCRIPTIONLIBRARIES_RUN_LIVE_TESTS = '1'
 dotnet test .\SubscriptionLibraries.Tests\SubscriptionLibraries.Tests.csproj -c Release --filter Category=Integration
 ```
 
-## Live catalog diagnostic tool
-
-The CLI verifies Microsoft behavior without Playnite:
-
-```powershell
-dotnet run --project .\SubscriptionLibraries.CatalogTool -- --region US --language en-US --plan essential --selection both
-```
-
-Optional arguments include `--plan pc|console|essential|premium|ultimate|all`, `--selection pc|xbox|both`, `--xbox-generation both|one|series`, `--include-rejected`, `--json <path>`, `--sigl-id <guid>` for the broad PC collection, and `--console-sigl-id <guid>` for the broad console collection. The output reports plan/platform counts, overlap, verified PC products, generation status, leaving-soon count, missing metadata, and samples.
-
-## Release package
-
-Build, stage only the required runtime files, and invoke Playnite's official packer:
+To create an installable `.pext`, use PowerShell and Playnite's `Toolbox.exe`:
 
 ```powershell
 .\build\pack.ps1 -Configuration Release -ToolboxPath 'C:\Path\To\Playnite\Toolbox.exe'
 ```
 
-The script writes the extension staging directory and `.pext` package under `artifacts/`. If Playnite is installed in a standard location, `-ToolboxPath` can be omitted. `Playnite.SDK.dll` and the Playnite-hosted JSON assembly are deliberately not included because the host supplies them.
+The package is written under `artifacts/`. You can omit `-ToolboxPath` if Playnite is installed in a standard location. For development, build Debug, add `SubscriptionLibraries/bin/Debug/net462` in Playnite's **Settings > For developers**, and restart Playnite after rebuilding the plugin.
 
-## How synchronization works
+### Catalog diagnostic tool
 
-1. The provider requests the configured broad **All PC Games** and **All Console Games** collections from `catalog.gamepass.com/sigls/v2`. It also requests Microsoft's plan-specific collections from `sigls/v3` with the plan and PC/console-generation context currently used by the Xbox Game Pass browse page. Separate PC and console **Leaving Soon** collections supply warnings, but no fabricated dates.
-2. Stable Microsoft product IDs are deduplicated across all collections. Plan membership is stored separately for PC and Xbox; selecting a plan and platform is a view over this full catalog, so switching views does not imply that a game left Game Pass.
-3. Product metadata is resolved from `displaycatalog.mp.microsoft.com/v7.0/products` in batches of at most 200.
-4. PC access also requires affirmative Windows PC metadata. Console access is determined by console-collection membership; Windows-capable hardware metadata alone never grants a PC Game Pass label. Product records without a title/ID cannot be imported. Plan-specific lists can be empty in markets where a plan is unavailable; an unrecognized plan membership is never treated as entitlement.
-5. Accepted products become Playnite entries with:
-   - Library/source: **Game Pass**
-   - Platform: **PC (Windows)**, **Xbox One**, and/or **Xbox Series X|S** when a generation-specific collection supplies evidence; generic **Xbox console** only where that detail is unavailable
-   - Tags: **Subscription: Game Pass**, **Access: Subscription**, the selected **Game Pass plan: ...** (unless browsing all), and exactly one of **Game Pass: PC only**, **Game Pass: Xbox only**, or **Game Pass: PC + Xbox**, evaluated within the selected plan
-   - Microsoft Store link, last-catalog-verification link, cover/background art, description, companies, and release date when supplied
-6. A plugin-owned reconciliation pass adds new records and refreshes the extension's status tags and managed PC/Xbox platform fields on existing records. User-added tags and unrelated platforms are preserved.
-7. Results are cached in Playnite's plugin data directory.
+The standalone tool inspects the live catalog without Playnite:
 
-The stable Microsoft product ID is the library `GameId`; titles are never primary identifiers. Some games have distinct Windows and console product IDs or editions, so they intentionally appear as separate records rather than being merged by similar title.
+```powershell
+dotnet run --project .\SubscriptionLibraries.CatalogTool -- --region US --language en-US --plan essential --selection both
+```
 
-## Temporary access and duplicates
-
-Subscription access is modeled as `Active`, `LeavingSoon`, or `Removed`. The public **Leaving Soon** collections set a **Leaving Game Pass** tag and can trigger a Playnite notification when a game newly enters them. These feeds are scoped to PC Game Pass on PC and Ultimate on console; other plan/platform combinations are not labeled leaving based on an unrelated feed. Microsoft does not expose dependable leaving dates through those collections, so the extension does not invent dates. An empty collection is valid.
-
-On a successful refresh, a previously cached game that disappears from **both** Game Pass collections is retained in cache history as `Removed` with the detection timestamp. Its plugin-owned Playnite record is retained for auditability, loses the **Access: Subscription** tag, and receives **Access: Removed** plus **Left Game Pass**. If the title returns, those managed tags switch back to active. Unrelated user tags are preserved, manually deleted records remain on Playnite's import-exclusion list, and records from other plugins are never changed.
-
-Changing the plan or PC/Xbox selection does **not** mean a game left Game Pass. Newly discovered out-of-selection products are not imported. Previously imported entries get **Access: Not in selected plan** or **Access: Outside selected platform**, while games no longer in any catalog get **Access: Removed**. The **Unavailable entries** setting then controls what happens to these plugin-owned entries:
-
-- **Keep and mark unavailable** (default): retain them visibly with the non-active status.
-- **Hide unavailable entries**: hide them from the normal Playnite view without deleting play history or edits; automatically show them again when they become eligible. Entries the user had already hidden before cleanup stay hidden.
-- **Remove unplayed entries; hide played/installed entries**: permanently delete only this extension's unplayed, uninstalled, idle entries outside the selected view. Played, installed, busy, or user-hidden entries are hidden instead. Deletion loses any edits on that Playnite record, but does not add an import exclusion, so the game can be imported again if it later becomes eligible. Records from other library plugins are never touched.
-
-The cleanup mode never deletes based on a stale fallback catalog. A failed deletion falls back to hiding and marking the entry unavailable. **Refresh and Apply...** gets a live catalog, previews changes (including permanent removals), then applies only after confirmation. A normal Playnite library update also applies the configured policy. Playnite intentionally does not remove library entries by default, so cleanup remains opt-in; see [Playnite's explanation](https://github.com/JosefNemec/Playnite/issues/2677).
-
-New additions detected after the first successful baseline receive a detected `DateAdded`; recent entries can receive a temporary **Recently Added to Game Pass** tag. The first catalog is not falsely labeled as newly added.
-
-Matching support reports likely relationships by stable IDs, metadata IDs, exact normalized title, then conservative fuzzy title. It never automatically merges title-only matches.
-
-The Playnite desktop **Subscription Libraries** menu includes **Show active Game Pass games**, a temporary filter for this plugin's entries carrying **Access: Subscription**. Right-click any single game and choose **Check Game Pass availability** to see conservative candidate matches in the selected plan/platform. This does not merge entries or verify your personal subscription.
-
-## Cache and failure behavior
-
-- Default freshness: 24 hours, configurable from 1 to 720 hours.
-- A fresh matching market/language cache contains all plan/platform/generation memberships and avoids network traffic when switching views. Changing either Advanced catalog SIGL ID invalidates that cache and requires a new fetch. Caches written before catalog ID identity was introduced also need one new fetch, as do pre-1.3 caches with an older schema.
-- Disabling **Refresh during Playnite library update** uses the last cache; an initial fetch still occurs if no cache exists.
-- **Refresh and Apply...** forces a network refresh, shows a change preview, and applies the selected view after confirmation.
-- If Microsoft fails after a valid cache exists, the plugin logs a warning and returns the cached catalog, even when stale. A stale/fallback catalog marks this plugin's entries **Access: Catalog unverified** and cannot add, hide, restore, or delete them until verification succeeds.
-- If an ID remains in a selected collection but its current metadata is missing or unclassifiable, the last verified active record is preserved instead of falsely declaring that the game left the service.
-- Cache writes are atomic, and malformed cache files are ignored.
-- A suspicious live drop below half of a prior sizable catalog, plan/platform membership, or console-generation membership is rejected to prevent a transient upstream issue from wiping the library view. A previously populated membership that suddenly becomes empty is also rejected when it contained at least five games.
-
-## Data sources and reliability
-
-The Microsoft catalog endpoints are public-facing interfaces used by Microsoft experiences and community implementations, but Microsoft does not document them as a guaranteed third-party API. Their schemas, identifiers, or availability may change without notice. Endpoint definitions, plan collection IDs, and subscription context IDs are isolated in `GamePassConstants`; the broad PC/console SIGL IDs are also available under Advanced settings for recovery. The plan-specific IDs require a code update if Microsoft changes them.
-
-See [docs/RESEARCH.md](docs/RESEARCH.md) for exact request formats, platform evidence, current diagnostics, and source references.
-
-## Privacy and security
-
-V1 sends only the configured market, language, public collection ID, and public Microsoft product IDs. It does not access personal Xbox data, request credentials, persist tokens, bypass authentication, or run a hosted service. Logs omit secrets and full request queries.
-
-## Troubleshooting
-
-- **No games appear:** confirm Game Pass is enabled, select your actual plan and a compatible platform (PC Game Pass does not grant Xbox-console access), save settings, then run Update Game Library with this plugin's library selected.
-- **Refresh failed but games still appear:** this is expected stale-cache fallback. Review the last error in settings and Playnite's logs.
-- **The cache reflects another country:** change both Region and Language, save, then use Refresh and Apply. Caches are separated by provider/market/language.
-- **A console game is missing:** select Xbox console or both and the correct generation in extension settings, then update the library. If it is still missing, inspect the live diagnostic tool; console availability varies by market and plan.
-- **An old subscription entry still appears:** choose **Hide** or **Remove unplayed; hide the rest** under **Unavailable entries**, save, and update this extension's library. Played or installed records are deliberately preserved rather than deleted.
-- **A current PC title is missing:** run the diagnostic tool with `--include-rejected` and attach its counts/reason (not a full private Playnite database) to an issue.
-- **The endpoint changed:** verify it against Microsoft's browse page and the live diagnostic tool. Advanced settings can update the broad PC/console SIGL IDs; plan-specific v3 IDs are isolated in `GamePassConstants` for a code update.
-- **Access shows Catalog unverified:** the last attempted refresh failed or automatic refresh is disabled and the cache expired. The displayed catalog is historical, not a current availability guarantee. Use Refresh and Apply when connectivity returns.
-
-## Limitations and roadmap
-
-- This plugin represents regional plan catalog availability, not proof that a particular account has an active subscription. It does not read your account entitlements, family sharing, trials, or purchase history. Selecting a plan is a user-declared filter, not account verification.
-- Microsoft's plan collections can include free-to-play titles or titles with plan-specific benefits; a catalog listing does not by itself prove that payment is required to play that title. The optional free-to-play exclusion only acts when the standard public Store purchase SKU reports zero list price and zero MSRP; ambiguous or missing price data is left in view. Perks/trials are not automatically excluded because the source does not reliably classify them.
-- Imported records are uninstalled catalog entries with a Store link; V1 does not install or launch games.
-- Removed and previously imported out-of-selection records remain visible by default and explicitly labeled; opt-in settings can hide them or remove unplayed records. Hiding preserves history, while removal does not.
-- Existing 1.0-1.2 plugin records are kept because the extension ID and Microsoft product IDs are stable; their managed tags update on the next library import. Plugin-owned records still using the old default **PC Game Pass** source are relabeled **Game Pass**; custom sources are preserved. A new full-catalog cache is fetched after upgrading to 1.3, so the first 1.3 sync needs network access.
-- Exact subscription start/leaving dates are unavailable for most entries.
-- EA Play is not enabled because Microsoft's current EA collection mixes PC and console and cannot be reduced reliably to PC using the available metadata.
-- Amazon Luna is not enabled because no stable public unauthenticated Standard/Prime/Premium catalog API was found.
-- Amazon/Twitch permanently claimed PC games remain the responsibility of Playnite's existing Amazon library plugin.
-- This V1 binary targets the current stable Playnite 10.x SDK. Playnite 11's announced .NET/runtime and package-format changes will require a separate migration and validation pass after that release becomes the supported target.
-
-Future providers remain isolated behind `ISubscriptionProvider`. They will only be enabled when a stable, legal, accurately classifiable source exists.
+Run it with `--help` for plan, platform, Xbox generation, rejected-product, JSON output, and advanced catalog ID options. The output includes selected-view counts, platform evidence, and missing metadata; live numbers change over time.
 
 ## License
 

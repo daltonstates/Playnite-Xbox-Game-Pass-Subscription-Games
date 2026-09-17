@@ -294,12 +294,29 @@ internal sealed class PlayniteLibraryReconciler
         }
 
         var linkUpdates = new List<Game>();
-        foreach (var game in ownedGames.Where(game => !deletedIds.Contains(game.Id)))
+        void UpdateVerificationLinks()
         {
-            if (ApplyVerificationLink(game, result.CatalogTimestampUtc))
+            foreach (var game in ownedGames.Where(game => !deletedIds.Contains(game.Id)))
             {
-                linkUpdates.Add(game);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ApplyVerificationLink(game, result.CatalogTimestampUtc))
+                {
+                    linkUpdates.Add(game);
+                }
             }
+        }
+
+        // Existing games' Links collections can already have WPF CollectionViews.
+        // Playnite calls ImportGames on a worker thread, so edit those collections
+        // on the UI dispatcher before persisting the changed games.
+        var dispatcher = playniteApi.MainView.UIDispatcher;
+        if (dispatcher.CheckAccess())
+        {
+            UpdateVerificationLinks();
+        }
+        else
+        {
+            dispatcher.Invoke((Action)UpdateVerificationLinks);
         }
         if (linkUpdates.Count > 0)
         {

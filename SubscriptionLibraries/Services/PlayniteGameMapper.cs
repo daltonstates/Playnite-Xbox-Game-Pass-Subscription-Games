@@ -13,6 +13,8 @@ internal static class PlayniteGameMapper
     internal const string ActiveAccessTag = "Access: Subscription";
     internal const string UnverifiedAccessTag = "Access: Catalog unverified";
     internal const string VerifiedLinkPrefix = "Catalog verified: ";
+    internal const string PcOnlyMembershipTag = "Game Pass: PC only";
+    internal const string PcAndXboxMembershipTag = "Game Pass: PC + Xbox";
     private const string RemovedAccessTag = "Access: Removed";
     private const string NotSelectedAccessTag = "Access: Outside selected catalog";
     private const string NotSelectedPlanTag = "Access: Not in selected plan";
@@ -168,9 +170,9 @@ internal static class PlayniteGameMapper
             $"Left {providerName}",
             "Subscription: PC Game Pass",
             "Left PC Game Pass",
-            "Game Pass: PC only",
+            PcOnlyMembershipTag,
             "Game Pass: Xbox only",
-            "Game Pass: PC + Xbox",
+            PcAndXboxMembershipTag,
             "Game Pass console: Xbox One",
             "Game Pass console: Xbox Series X|S",
             "Game Pass console: Xbox One + Series X|S",
@@ -188,11 +190,11 @@ internal static class PlayniteGameMapper
     {
         if (platforms == (SubscriptionPlatforms.WindowsPc | SubscriptionPlatforms.XboxConsole))
         {
-            tags.Add("Game Pass: PC + Xbox");
+            tags.Add(PcAndXboxMembershipTag);
         }
         else if (platforms == SubscriptionPlatforms.WindowsPc)
         {
-            tags.Add("Game Pass: PC only");
+            tags.Add(PcOnlyMembershipTag);
         }
         else if (platforms == SubscriptionPlatforms.XboxConsole)
         {

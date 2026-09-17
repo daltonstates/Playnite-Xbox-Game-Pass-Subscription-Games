@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -11,12 +12,19 @@ using SubscriptionLibraries.Core.Services;
 
 namespace SubscriptionLibraries;
 
+public enum GamePassInstallApp
+{
+    XboxApp,
+    MicrosoftStore
+}
+
 public sealed class SubscriptionLibrariesSettings : ObservableObject
 {
     private bool pcGamePassEnabled = true;
     private GamePassCatalogSelection gamePassCatalogSelection = GamePassCatalogSelection.PcOnly;
     private GamePassPlanSelection gamePassPlanSelection = GamePassPlanSelection.PcGamePass;
     private GamePassConsoleSelection gamePassConsoleSelection = GamePassConsoleSelection.Both;
+    private GamePassInstallApp preferredInstallApp = GamePassInstallApp.XboxApp;
     private UnavailableGameHandling unavailableGameHandling = UnavailableGameHandling.KeepAndMark;
     private string region = "US";
     private string language = "en-US";
@@ -26,6 +34,8 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
     private string consoleGamePassSiglId = GamePassConstants.ConsoleCatalogSiglId;
     private DateTime? lastSuccessfulSynchronizationUtc;
     private int lastPcGamePassGameCount;
+    private string? lastCountViewDescription;
+    private DateTime? lastCountCatalogTimestampUtc;
     private string? lastSynchronizationError;
     private string? lastCatalogSource;
     private int lastRejectedNonPcCount;
@@ -75,6 +85,12 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
     {
         get => gamePassConsoleSelection;
         set => SetValue(ref gamePassConsoleSelection, value);
+    }
+
+    public GamePassInstallApp PreferredInstallApp
+    {
+        get => preferredInstallApp;
+        set => SetValue(ref preferredInstallApp, value);
     }
 
     public UnavailableGameHandling UnavailableGameHandling
@@ -129,6 +145,18 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
     {
         get => lastPcGamePassGameCount;
         set => SetValue(ref lastPcGamePassGameCount, value);
+    }
+
+    public string? LastCountViewDescription
+    {
+        get => lastCountViewDescription;
+        set => SetValue(ref lastCountViewDescription, value);
+    }
+
+    public DateTime? LastCountCatalogTimestampUtc
+    {
+        get => lastCountCatalogTimestampUtc;
+        set => SetValue(ref lastCountCatalogTimestampUtc, value);
     }
 
     public string? LastSynchronizationError
@@ -239,6 +267,19 @@ public sealed class UnavailableHandlingOption
     public string DisplayName { get; }
 }
 
+public sealed class InstallAppOption
+{
+    public InstallAppOption(GamePassInstallApp value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public GamePassInstallApp Value { get; }
+
+    public string DisplayName { get; }
+}
+
 public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, ISettings
 {
     private readonly SubscriptionLibrariesPlugin plugin;
@@ -254,6 +295,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         settings = plugin.LoadPluginSettings<SubscriptionLibrariesSettings>() ??
             new SubscriptionLibrariesSettings();
         RepairDefaults(settings);
+        settings.PropertyChanged += OnSettingsPropertyChanged;
         RefreshNowCommand = new RelayCommand(
             async () => await RefreshNowAsync().ConfigureAwait(true),
             () => !IsRefreshing);
@@ -264,9 +306,12 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         get => settings;
         private set
         {
+            settings.PropertyChanged -= OnSettingsPropertyChanged;
             settings = value;
+            settings.PropertyChanged += OnSettingsPropertyChanged;
             OnPropertyChanged();
             RaiseStatusProperties();
+            RaiseSelectionProperties();
         }
     }
 
@@ -328,6 +373,12 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             "Remove unplayed entries; hide played/installed entries")
     };
 
+    public IReadOnlyList<InstallAppOption> InstallAppOptions { get; } = new[]
+    {
+        new InstallAppOption(GamePassInstallApp.XboxApp, "Xbox app (default)"),
+        new InstallAppOption(GamePassInstallApp.MicrosoftStore, "Microsoft Store")
+    };
+
     public ICommand RefreshNowCommand { get; }
 
     public bool IsRefreshing
@@ -336,7 +387,40 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         private set
         {
             SetValue(ref isRefreshing, value);
+            OnPropertyChanged(nameof(CanEditSettings));
             CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    public bool CanEditSettings => !IsRefreshing;
+
+    internal bool IsEditing => isEditing;
+
+    public bool ConsoleGenerationEnabled =>
+        Settings.GamePassCatalogSelection != GamePassCatalogSelection.PcOnly &&
+        Settings.GamePassPlanSelection != GamePassPlanSelection.PcGamePass;
+
+    public string SelectionGuidance
+    {
+        get
+        {
+            if (Settings.GamePassPlanSelection == GamePassPlanSelection.PcGamePass)
+            {
+                return Settings.GamePassCatalogSelection == GamePassCatalogSelection.XboxOnly
+                    ? "PC Game Pass has no Xbox console catalog. Choose PC games or another plan."
+                    : "PC Game Pass includes PC games only; the Xbox generation setting has no effect.";
+            }
+
+            if (Settings.GamePassPlanSelection == GamePassPlanSelection.XboxGamePassConsole)
+            {
+                return Settings.GamePassCatalogSelection == GamePassCatalogSelection.PcOnly
+                    ? "Legacy Xbox Game Pass for Console has no PC catalog. Choose Xbox games or another plan."
+                    : "The legacy console plan includes Xbox games only; selecting PC adds no games.";
+            }
+
+            return Settings.GamePassCatalogSelection == GamePassCatalogSelection.PcOnly
+                ? "Xbox console generation does not affect a PC-only view."
+                : "Xbox console generation filters console games; PC games are unaffected.";
         }
     }
 
@@ -351,7 +435,24 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             ? DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("g")
             : "Never";
 
-    public string LastGameCountDisplay => Settings.LastPcGamePassGameCount.ToString("N0");
+    public string LastGameCountDisplay
+    {
+        get
+        {
+            if (Settings.LastCountCatalogTimestampUtc is not DateTime timestamp ||
+                string.IsNullOrWhiteSpace(Settings.LastCountViewDescription))
+            {
+                return Settings.LastSuccessfulSynchronizationUtc is null
+                    ? "No catalog checked yet"
+                    : $"{Settings.LastPcGamePassGameCount:N0} (view not recorded; refresh to update)";
+            }
+
+            var localTime = DateTime.SpecifyKind(timestamp, DateTimeKind.Utc)
+                .ToLocalTime().ToString("g");
+            return $"{Settings.LastPcGamePassGameCount:N0} - " +
+                $"{Settings.LastCountViewDescription}; catalog verified {localTime}";
+        }
+    }
 
     public string LastSynchronizationErrorDisplay =>
         string.IsNullOrWhiteSpace(Settings.LastSynchronizationError)
@@ -402,6 +503,15 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         plugin.SavePluginSettings(Settings);
     }
 
+    internal void CommitAppliedSettings()
+    {
+        plugin.SavePluginSettings(Settings);
+        if (isEditing)
+        {
+            editingClone = Serialization.GetClone(Settings);
+        }
+    }
+
     public bool VerifySettings(out List<string> errors)
     {
         errors = new List<string>();
@@ -423,6 +533,11 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         if (!Enum.IsDefined(typeof(GamePassConsoleSelection), Settings.GamePassConsoleSelection))
         {
             errors.Add("Choose an Xbox console generation.");
+        }
+
+        if (!Enum.IsDefined(typeof(GamePassInstallApp), Settings.PreferredInstallApp))
+        {
+            errors.Add("Choose the Xbox app or Microsoft Store for install pages.");
         }
 
         if (!Enum.IsDefined(typeof(UnavailableGameHandling), Settings.UnavailableGameHandling))
@@ -451,7 +566,26 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
     internal void RecordSyncResult(SubscriptionSyncResult result)
     {
         Settings.LastPcGamePassGameCount = result.Games.Count(game =>
-            Settings.Includes(game));
+            game.Availability != SubscriptionAvailability.Removed && Settings.Includes(game));
+        var platform = Settings.GamePassCatalogSelection switch
+        {
+            GamePassCatalogSelection.PcOnly => "PC",
+            GamePassCatalogSelection.XboxOnly => "Xbox",
+            _ => "PC + Xbox"
+        };
+        var generation = ConsoleGenerationEnabled
+            ? Settings.GamePassConsoleSelection switch
+            {
+                GamePassConsoleSelection.XboxOne => " / Xbox One",
+                GamePassConsoleSelection.SeriesXorS => " / Series X|S",
+                _ => " / both Xbox generations"
+            }
+            : string.Empty;
+        Settings.LastCountViewDescription =
+            $"{Settings.GamePassPlanSelection.DisplayName()} / {platform}{generation} / " +
+            $"{Settings.Region} {Settings.Language}" +
+            (Settings.ExcludeConfirmedFreeToPlay ? " / excluding free-to-play" : string.Empty);
+        Settings.LastCountCatalogTimestampUtc = result.CatalogTimestampUtc.UtcDateTime;
         Settings.LastCatalogSource = result.Source.ToString();
         if (result.Source == SubscriptionCatalogSource.Live)
         {
@@ -523,6 +657,22 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         OnPropertyChanged(nameof(LastDiagnosticsDisplay));
     }
 
+    private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (string.IsNullOrEmpty(args.PropertyName) ||
+            args.PropertyName == nameof(SubscriptionLibrariesSettings.GamePassPlanSelection) ||
+            args.PropertyName == nameof(SubscriptionLibrariesSettings.GamePassCatalogSelection))
+        {
+            RaiseSelectionProperties();
+        }
+    }
+
+    private void RaiseSelectionProperties()
+    {
+        OnPropertyChanged(nameof(ConsoleGenerationEnabled));
+        OnPropertyChanged(nameof(SelectionGuidance));
+    }
+
     private static void RepairDefaults(SubscriptionLibrariesSettings value)
     {
         value.Region = string.IsNullOrWhiteSpace(value.Region) ? "US" : value.Region;
@@ -544,6 +694,10 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         if (!Enum.IsDefined(typeof(GamePassConsoleSelection), value.GamePassConsoleSelection))
         {
             value.GamePassConsoleSelection = GamePassConsoleSelection.Both;
+        }
+        if (!Enum.IsDefined(typeof(GamePassInstallApp), value.PreferredInstallApp))
+        {
+            value.PreferredInstallApp = GamePassInstallApp.XboxApp;
         }
         if (!Enum.IsDefined(typeof(UnavailableGameHandling), value.UnavailableGameHandling))
         {
