@@ -73,6 +73,28 @@ public sealed class SubscriptionSyncServiceTests
     }
 
     [Fact]
+    public async Task MissingPlanForPreviouslyActiveProductCannotTriggerCleanup()
+    {
+        using var directory = new TemporaryDirectory();
+        var clock = new FakeClock(new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero));
+        var provider = new FakeCatalogProvider();
+        provider.Return(new[] { FakeProvider.Game("ONE") }, new[] { "ONE" });
+        provider.Return(new[] { FakeProvider.Game("TWO") },
+            new[] { "ONE", "TWO" }, new[] { "ONE" },
+            rejectMissingPlansForPreviouslyActiveGames: true);
+        var service = CreateService(directory, clock);
+        var options = Options();
+        await service.SynchronizeAsync(provider, options);
+
+        clock.UtcNow = clock.UtcNow.AddHours(25);
+        var fallback = await service.SynchronizeAsync(provider, options);
+
+        Assert.False(fallback.IsVerified);
+        Assert.True(fallback.UsedFallback);
+        Assert.Equal("ONE", Assert.Single(fallback.Games).ProviderGameId);
+    }
+
+    [Fact]
     public async Task ReportsOnlyNewLeavingSoonEntriesAndKeepsTheirStatus()
     {
         using var directory = new TemporaryDirectory();

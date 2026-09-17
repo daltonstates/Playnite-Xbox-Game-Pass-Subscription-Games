@@ -159,7 +159,8 @@ internal sealed class FakeCatalogProvider : ISubscriptionCatalogProvider
         IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>?
             declaredPlanPlatformsByProductId = null,
         IReadOnlyDictionary<string, Dictionary<string, SubscriptionPlatforms>>?
-            leavingSoonPlanPlatformsByProductId = null) =>
+            leavingSoonPlanPlatformsByProductId = null,
+        bool rejectMissingPlansForPreviouslyActiveGames = false) =>
         snapshots.Enqueue(new SubscriptionCatalogSnapshot
         {
             Games = games,
@@ -172,7 +173,8 @@ internal sealed class FakeCatalogProvider : ISubscriptionCatalogProvider
                     StringComparer.OrdinalIgnoreCase),
             LeavingSoonPlanPlatformsByProductId = leavingSoonPlanPlatformsByProductId ??
                 new Dictionary<string, Dictionary<string, SubscriptionPlatforms>>(
-                    StringComparer.OrdinalIgnoreCase)
+                    StringComparer.OrdinalIgnoreCase),
+            RejectMissingPlansForPreviouslyActiveGames = rejectMissingPlansForPreviouslyActiveGames
         });
 
     public async Task<IReadOnlyCollection<SubscriptionGame>> GetGamesAsync(

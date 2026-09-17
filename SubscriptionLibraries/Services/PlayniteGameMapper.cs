@@ -4,6 +4,7 @@ using System.Linq;
 using Playnite.SDK.Models;
 using SubscriptionLibraries.Core.Models;
 using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Providers.UbisoftPlus;
 
 namespace SubscriptionLibraries.Services;
 
@@ -54,14 +55,15 @@ internal static class PlayniteGameMapper
         {
             metadata.Links = new List<Link>
             {
-                new("Microsoft Store", game.StoreUri.AbsoluteUri)
+                new(game.ProviderId == UbisoftPlusProvider.ProviderId
+                    ? "Ubisoft Store" : "Microsoft Store", game.StoreUri.AbsoluteUri)
             };
         }
 
         if (catalogTimestamp is DateTimeOffset timestamp)
         {
             metadata.Links ??= new List<Link>();
-            metadata.Links.Add(CreateVerificationLink(timestamp));
+            metadata.Links.Add(CreateVerificationLink(timestamp, game.ProviderId));
         }
 
         if (game.ImageUri is not null)
@@ -86,6 +88,23 @@ internal static class PlayniteGameMapper
         if (game is null)
         {
             throw new ArgumentNullException(nameof(game));
+        }
+
+        if (game.ProviderId == UbisoftPlusProvider.ProviderId)
+        {
+            var ubisoftTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                GetSubscriptionTag(game.ProviderName), ActiveAccessTag
+            };
+            if (game.PlanPlatforms.ContainsKey(UbisoftPlusProvider.ClassicsPlan))
+            {
+                ubisoftTags.Add("Ubisoft+ plan: Classics");
+            }
+            if (game.PlanPlatforms.ContainsKey(UbisoftPlusProvider.PremiumPlan))
+            {
+                ubisoftTags.Add("Ubisoft+ plan: Premium");
+            }
+            return ubisoftTags;
         }
 
         var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -123,9 +142,12 @@ internal static class PlayniteGameMapper
     public static IReadOnlyCollection<string> GetUnverifiedTagNames(SubscriptionGame game) =>
         new[] { GetSubscriptionTag(game.ProviderName), UnverifiedAccessTag };
 
-    public static Link CreateVerificationLink(DateTimeOffset timestamp) => new(
+    public static Link CreateVerificationLink(DateTimeOffset timestamp,
+        string providerId = GamePassConstants.ProviderId) => new(
         VerifiedLinkPrefix + timestamp.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'"),
-        "https://www.xbox.com/xbox-game-pass/games");
+        providerId == UbisoftPlusProvider.ProviderId
+            ? "https://store.ubisoft.com/us/ubisoftplus/games?lang=en_US"
+            : "https://www.xbox.com/xbox-game-pass/games");
 
     public static IReadOnlyCollection<string> GetRemovedTagNames(string providerName) =>
         new[]
@@ -155,7 +177,17 @@ internal static class PlayniteGameMapper
     }
 
     public static IReadOnlyCollection<string> GetManagedTagNames(string providerName) =>
-        new[]
+        string.Equals(providerName, UbisoftPlusProvider.ProviderName,
+            StringComparison.OrdinalIgnoreCase)
+            ? new[]
+            {
+                GetSubscriptionTag(providerName), ActiveAccessTag,
+                UnverifiedAccessTag, RemovedAccessTag, NotSelectedAccessTag,
+                NotSelectedPlanTag, $"Left {providerName}",
+                "Ubisoft+ plan: Classics", "Ubisoft+ plan: Premium",
+                HiddenBySelectionTag
+            }
+            : new[]
         {
             GetSubscriptionTag(providerName),
             ActiveAccessTag,

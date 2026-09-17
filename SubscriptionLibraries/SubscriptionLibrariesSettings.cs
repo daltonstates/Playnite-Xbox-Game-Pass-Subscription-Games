@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 using Playnite.SDK;
 using Playnite.SDK.Data;
 using SubscriptionLibraries.Core.Models;
 using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Providers.UbisoftPlus;
 using SubscriptionLibraries.Core.Services;
 
 namespace SubscriptionLibraries;
@@ -21,6 +23,11 @@ public enum GamePassInstallApp
 public sealed class SubscriptionLibrariesSettings : ObservableObject
 {
     private bool pcGamePassEnabled = true;
+    private bool ubisoftPlusEnabled;
+    private UbisoftPlusPlanSelection ubisoftPlusPlanSelection = UbisoftPlusPlanSelection.Premium;
+    private DateTime? lastUbisoftSynchronizationUtc;
+    private int lastUbisoftGameCount;
+    private string? lastUbisoftError;
     private GamePassCatalogSelection gamePassCatalogSelection = GamePassCatalogSelection.PcOnly;
     private GamePassPlanSelection gamePassPlanSelection = GamePassPlanSelection.Ultimate;
     private GamePassConsoleSelection gamePassConsoleSelection = GamePassConsoleSelection.Both;
@@ -68,6 +75,36 @@ public sealed class SubscriptionLibrariesSettings : ObservableObject
     {
         get => pcGamePassEnabled;
         set => SetValue(ref pcGamePassEnabled, value);
+    }
+
+    public bool UbisoftPlusEnabled
+    {
+        get => ubisoftPlusEnabled;
+        set => SetValue(ref ubisoftPlusEnabled, value);
+    }
+
+    public UbisoftPlusPlanSelection UbisoftPlusPlanSelection
+    {
+        get => ubisoftPlusPlanSelection;
+        set => SetValue(ref ubisoftPlusPlanSelection, value);
+    }
+
+    public DateTime? LastUbisoftSynchronizationUtc
+    {
+        get => lastUbisoftSynchronizationUtc;
+        set => SetValue(ref lastUbisoftSynchronizationUtc, value);
+    }
+
+    public int LastUbisoftGameCount
+    {
+        get => lastUbisoftGameCount;
+        set => SetValue(ref lastUbisoftGameCount, value);
+    }
+
+    public string? LastUbisoftError
+    {
+        get => lastUbisoftError;
+        set => SetValue(ref lastUbisoftError, value);
     }
 
     public GamePassCatalogSelection GamePassCatalogSelection
@@ -281,6 +318,18 @@ public sealed class InstallAppOption
     public string DisplayName { get; }
 }
 
+public sealed class UbisoftPlanOption
+{
+    public UbisoftPlanOption(UbisoftPlusPlanSelection value, string displayName)
+    {
+        Value = value;
+        DisplayName = displayName;
+    }
+
+    public UbisoftPlusPlanSelection Value { get; }
+    public string DisplayName { get; }
+}
+
 public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, ISettings
 {
     private readonly SubscriptionLibrariesPlugin plugin;
@@ -289,6 +338,7 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
     private bool isRefreshing;
     private bool isEditing;
     private string? refreshStatus;
+    private string? ubisoftRefreshStatus;
 
     public SubscriptionLibrariesSettingsViewModel(SubscriptionLibrariesPlugin plugin)
     {
@@ -299,6 +349,9 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         settings.PropertyChanged += OnSettingsPropertyChanged;
         RefreshNowCommand = new RelayCommand(
             async () => await RefreshNowAsync().ConfigureAwait(true),
+            () => !IsRefreshing);
+        RefreshUbisoftNowCommand = new RelayCommand(
+            async () => await RefreshUbisoftNowAsync().ConfigureAwait(true),
             () => !IsRefreshing);
     }
 
@@ -380,7 +433,35 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         new InstallAppOption(GamePassInstallApp.MicrosoftStore, "Microsoft Store")
     };
 
+    public IReadOnlyList<UbisoftPlanOption> UbisoftPlans { get; } = new[]
+    {
+        new UbisoftPlanOption(UbisoftPlusPlanSelection.Classics, "Ubisoft+ Classics"),
+        new UbisoftPlanOption(UbisoftPlusPlanSelection.Premium, "Ubisoft+ Premium"),
+        new UbisoftPlanOption(UbisoftPlusPlanSelection.AllCatalogs, "All Ubisoft+ PC catalogs")
+    };
+
     public ICommand RefreshNowCommand { get; }
+    public ICommand RefreshUbisoftNowCommand { get; }
+
+    public Visibility UbisoftPlusRegionVisibility =>
+        UbisoftPlusProvider.Supports(Settings.Region, Settings.Language)
+            ? Visibility.Visible : Visibility.Collapsed;
+
+    public string UbisoftSynchronizationDisplay =>
+        Settings.LastUbisoftSynchronizationUtc is DateTime utc
+            ? $"{Settings.LastUbisoftGameCount:N0} games; verified " +
+              DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("g")
+            : "No catalog checked yet";
+
+    public string UbisoftErrorDisplay =>
+        string.IsNullOrWhiteSpace(Settings.LastUbisoftError)
+            ? "None" : Settings.LastUbisoftError!;
+
+    public string? UbisoftRefreshStatus
+    {
+        get => ubisoftRefreshStatus;
+        private set => SetValue(ref ubisoftRefreshStatus, value);
+    }
 
     public bool IsRefreshing
     {
@@ -541,24 +622,32 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
             errors.Add("Choose the Xbox app or Microsoft Store for install pages.");
         }
 
+        if (!Enum.IsDefined(typeof(UbisoftPlusPlanSelection), Settings.UbisoftPlusPlanSelection))
+        {
+            errors.Add("Choose a Ubisoft+ PC plan.");
+        }
+
         if (!Enum.IsDefined(typeof(UnavailableGameHandling), Settings.UnavailableGameHandling))
         {
             errors.Add("Choose how to handle unavailable Game Pass entries.");
         }
 
-        try
+        if (Settings.PcGamePassEnabled)
         {
-            _ = new GamePassProviderOptions
+            try
             {
-                Region = Settings.Region,
-                Language = Settings.Language,
-                SiglId = Settings.GamePassSiglId,
-                ConsoleSiglId = Settings.ConsoleGamePassSiglId
-            }.NormalizeAndValidate();
-        }
-        catch (ArgumentException exception)
-        {
-            errors.Add(exception.Message);
+                _ = new GamePassProviderOptions
+                {
+                    Region = Settings.Region,
+                    Language = Settings.Language,
+                    SiglId = Settings.GamePassSiglId,
+                    ConsoleSiglId = Settings.ConsoleGamePassSiglId
+                }.NormalizeAndValidate();
+            }
+            catch (ArgumentException exception)
+            {
+                errors.Add(exception.Message);
+            }
         }
 
         return errors.Count == 0;
@@ -631,6 +720,32 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         RaiseStatusProperties();
     }
 
+    internal void RecordUbisoftSyncResult(
+        SubscriptionSyncResult result, SubscriptionLibrariesSettings viewSettings)
+    {
+        Settings.LastUbisoftGameCount = result.Games.Count(game =>
+            game.Availability != SubscriptionAvailability.Removed &&
+            UbisoftPlusProvider.Includes(viewSettings.UbisoftPlusPlanSelection, game));
+        if (result.Source == SubscriptionCatalogSource.Live)
+        {
+            Settings.LastUbisoftSynchronizationUtc = result.CatalogTimestampUtc.UtcDateTime;
+            Settings.LastUbisoftError = null;
+        }
+        if (!string.IsNullOrWhiteSpace(result.Warning))
+        {
+            Settings.LastUbisoftError = result.Warning;
+        }
+        if (!isEditing) plugin.SavePluginSettings(Settings);
+        RaiseStatusProperties();
+    }
+
+    internal void RecordUbisoftError(Exception exception)
+    {
+        Settings.LastUbisoftError = exception.Message;
+        if (!isEditing) plugin.SavePluginSettings(Settings);
+        RaiseStatusProperties();
+    }
+
     private async Task RefreshNowAsync()
     {
         IsRefreshing = true;
@@ -653,6 +768,27 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         }
     }
 
+    private async Task RefreshUbisoftNowAsync()
+    {
+        IsRefreshing = true;
+        UbisoftRefreshStatus = "Refreshing Ubisoft+ and preparing a library preview...";
+        try
+        {
+            UbisoftRefreshStatus = await plugin.RefreshUbisoftAndApplyAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            RecordUbisoftError(exception);
+            UbisoftRefreshStatus = $"Refresh failed: {exception.Message}";
+            plugin.PlayniteApi.Dialogs.ShowErrorMessage(
+                exception.Message, "Ubisoft+ refresh and apply failed");
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
+    }
+
     private void RaiseStatusProperties()
     {
         OnPropertyChanged(nameof(LastSuccessfulSynchronizationDisplay));
@@ -660,6 +796,8 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         OnPropertyChanged(nameof(LastSynchronizationErrorDisplay));
         OnPropertyChanged(nameof(CatalogVerificationDisplay));
         OnPropertyChanged(nameof(LastDiagnosticsDisplay));
+        OnPropertyChanged(nameof(UbisoftSynchronizationDisplay));
+        OnPropertyChanged(nameof(UbisoftErrorDisplay));
     }
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
@@ -670,12 +808,19 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         {
             RaiseSelectionProperties();
         }
+        if (string.IsNullOrEmpty(args.PropertyName) ||
+            args.PropertyName == nameof(SubscriptionLibrariesSettings.Region) ||
+            args.PropertyName == nameof(SubscriptionLibrariesSettings.Language))
+        {
+            OnPropertyChanged(nameof(UbisoftPlusRegionVisibility));
+        }
     }
 
     private void RaiseSelectionProperties()
     {
         OnPropertyChanged(nameof(ConsoleGenerationEnabled));
         OnPropertyChanged(nameof(SelectionGuidance));
+        OnPropertyChanged(nameof(UbisoftPlusRegionVisibility));
     }
 
     private static void RepairDefaults(SubscriptionLibrariesSettings value)
@@ -703,6 +848,10 @@ public sealed class SubscriptionLibrariesSettingsViewModel : ObservableObject, I
         if (!Enum.IsDefined(typeof(GamePassInstallApp), value.PreferredInstallApp))
         {
             value.PreferredInstallApp = GamePassInstallApp.XboxApp;
+        }
+        if (!Enum.IsDefined(typeof(UbisoftPlusPlanSelection), value.UbisoftPlusPlanSelection))
+        {
+            value.UbisoftPlusPlanSelection = UbisoftPlusPlanSelection.Premium;
         }
         if (!Enum.IsDefined(typeof(UnavailableGameHandling), value.UnavailableGameHandling))
         {

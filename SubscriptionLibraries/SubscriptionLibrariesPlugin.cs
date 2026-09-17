@@ -15,6 +15,7 @@ using Playnite.SDK.Data;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Providers.UbisoftPlus;
 using SubscriptionLibraries.Core.Models;
 using SubscriptionLibraries.Core.Services;
 using SubscriptionLibraries.Services;
@@ -29,6 +30,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
     private readonly SubscriptionSyncService syncService;
     private readonly SemaphoreSlim synchronizationLock = new(1, 1);
     private readonly PlayniteLibraryReconciler libraryReconciler;
+    private readonly ProviderLibraryReconciler providerReconciler;
     private readonly PlayniteSubscriptionLogger subscriptionLogger;
     private readonly SubscriptionLibrariesSettingsViewModel settingsViewModel;
 
@@ -53,6 +55,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         syncService = new SubscriptionSyncService(cacheService, subscriptionLogger);
         settingsViewModel = new SubscriptionLibrariesSettingsViewModel(this);
         libraryReconciler = new PlayniteLibraryReconciler(api, this, Logger);
+        providerReconciler = new ProviderLibraryReconciler(api, this, Logger);
 
         Properties = new LibraryPluginProperties
         {
@@ -63,41 +66,58 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
 
     public override Guid Id { get; } = Guid.Parse("fa24a220-5ac0-440b-a816-30186a40c1a6");
 
-    public override string Name => "Subscription Libraries - Game Pass";
+    public override string Name => "Subscription Libraries";
 
     public override IEnumerable<MainMenuItem> GetMainMenuItems(GetMainMenuItemsArgs args)
     {
         yield return new MainMenuItem
         {
-            Description = "Show active Game Pass games",
+            Description = "Show active subscription games",
             MenuSection = "@Subscription Libraries",
-            Action = _ => ShowActiveGamePassGames()
+            Action = _ => ShowActiveSubscriptionGames()
         };
-        yield return new MainMenuItem
+        if (settingsViewModel.Settings.PcGamePassEnabled)
         {
-            Description = "Refresh and apply Game Pass catalog...",
-            MenuSection = "@Subscription Libraries",
-            Action = async _ => await RefreshAndApplyFromMenuAsync()
-        };
+            yield return new MainMenuItem
+            {
+                Description = "Refresh and apply Game Pass catalog...",
+                MenuSection = "@Subscription Libraries",
+                Action = async _ => await RefreshAndApplyFromMenuAsync()
+            };
+        }
+        if (settingsViewModel.Settings.UbisoftPlusEnabled &&
+            UbisoftPlusProvider.Supports(settingsViewModel.Settings.Region,
+                settingsViewModel.Settings.Language))
+        {
+            yield return new MainMenuItem
+            {
+                Description = "Refresh and apply Ubisoft+ PC catalog...",
+                MenuSection = "@Subscription Libraries",
+                Action = async _ => await RefreshUbisoftFromMenuAsync()
+            };
+        }
     }
 
     public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
     {
-        if (args.Games?.Count != 1 || !settingsViewModel.Settings.PcGamePassEnabled)
+        if (args.Games?.Count != 1)
         {
             yield break;
         }
 
         var selected = args.Games[0];
-        yield return new GameMenuItem
+        if (settingsViewModel.Settings.PcGamePassEnabled)
         {
-            Description = "Check Game Pass availability",
-            MenuSection = "@Subscription Libraries",
-            Action = async action => await CheckGamePassAvailabilityAsync(
-                action.Games.First())
-        };
+            yield return new GameMenuItem
+            {
+                Description = "Check Game Pass availability",
+                MenuSection = "@Subscription Libraries",
+                Action = async action => await CheckGamePassAvailabilityAsync(
+                    action.Games.First())
+            };
+        }
 
-        if (CanOpenPcInstallPage(selected))
+        if (settingsViewModel.Settings.PcGamePassEnabled && CanOpenPcInstallPage(selected))
         {
             var installApp = settingsViewModel.Settings.PreferredInstallApp;
             var appName = installApp == GamePassInstallApp.MicrosoftStore
@@ -109,95 +129,179 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
                 Action = _ => OpenPcInstallPage(selected, installApp)
             };
         }
+        if (settingsViewModel.Settings.UbisoftPlusEnabled && CanOpenUbisoftInstallPage(selected))
+        {
+            yield return new GameMenuItem
+            {
+                Description = "Open Ubisoft Store page to install...",
+                MenuSection = "@Subscription Libraries",
+                Action = _ => OpenUbisoftInstallPage(selected)
+            };
+        }
+    }
+
+    public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)
+    {
+        if (args.Game is null)
+        {
+            yield break;
+        }
+
+        var game = args.Game;
+        if (settingsViewModel.Settings.PcGamePassEnabled && CanOpenPcInstallPage(game))
+        {
+            var installApp = settingsViewModel.Settings.PreferredInstallApp;
+            var appName = installApp == GamePassInstallApp.MicrosoftStore
+                ? "Microsoft Store" : "Xbox app";
+            yield return new StorePageInstallController(
+                game, appName, () => OpenPcInstallPage(game, installApp));
+        }
+        if (settingsViewModel.Settings.UbisoftPlusEnabled && CanOpenUbisoftInstallPage(game))
+        {
+            yield return new StorePageInstallController(
+                game, "Ubisoft Store", () => OpenUbisoftInstallPage(game));
+        }
     }
 
     public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
     {
         var settings = CaptureSettings();
-        if (!settings.PcGamePassEnabled)
+        var ubisoftEnabled = settings.UbisoftPlusEnabled &&
+            UbisoftPlusProvider.Supports(settings.Region, settings.Language);
+        if (!settings.PcGamePassEnabled && !ubisoftEnabled)
         {
-            Logger.Info("Game Pass provider is disabled; returning no subscription games.");
+            Logger.Info("No supported subscription provider is enabled.");
             return Array.Empty<GameMetadata>();
         }
 
-        try
+        var metadata = new List<GameMetadata>();
+        if (settings.PcGamePassEnabled)
         {
-            var result = SynchronizeAsync(
+            try
+            {
+                var result = SynchronizeAsync(
                     settings,
                     false,
                     settings.RefreshDuringLibraryUpdate,
                     args.CancelToken)
-                .GetAwaiter()
-                .GetResult();
-            EnsureSettingsUnchanged(settings);
-            var now = DateTimeOffset.UtcNow;
-            var metadata = result.Games
-                .Where(game =>
-                    game.Availability != Core.Models.SubscriptionAvailability.Removed &&
-                    settings.Includes(game))
-                .Select(game => settings.GamePassPlanSelection.Project(
-                    settings.GamePassCatalogSelection,
-                    settings.GamePassConsoleSelection, game))
-                .Select(game => PlayniteGameMapper.Map(
-                    game, now, result.IsVerified, result.CatalogTimestampUtc))
-                .ToList();
-            Logger.Info(
-                $"Returning {metadata.Count} selected Game Pass library entries from {result.Source}.");
-            return metadata;
+                    .GetAwaiter().GetResult();
+                EnsureSettingsUnchanged(settings);
+                var now = DateTimeOffset.UtcNow;
+                metadata.AddRange(result.Games
+                    .Where(game =>
+                        game.Availability != SubscriptionAvailability.Removed &&
+                        settings.Includes(game))
+                    .Select(game => settings.GamePassPlanSelection.Project(
+                        settings.GamePassCatalogSelection,
+                        settings.GamePassConsoleSelection, game))
+                    .Select(game => PlayniteGameMapper.Map(
+                        game, now, result.IsVerified, result.CatalogTimestampUtc)));
+            }
+            catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
+                Logger.Error(exception, "Game Pass library synchronization failed.");
+                if (!ubisoftEnabled) throw;
+            }
         }
-        catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+        if (ubisoftEnabled)
         {
-            Logger.Info("Game Pass library synchronization was canceled.");
-            throw;
+            try
+            {
+                var result = SynchronizeUbisoftAsync(settings, false,
+                    settings.RefreshDuringLibraryUpdate, args.CancelToken)
+                    .GetAwaiter().GetResult();
+                EnsureSettingsUnchanged(settings);
+                metadata.AddRange(result.Games.Where(game =>
+                        game.Availability != SubscriptionAvailability.Removed &&
+                        UbisoftPlusProvider.Includes(settings.UbisoftPlusPlanSelection, game))
+                    .Select(game => PlayniteGameMapper.Map(game, DateTimeOffset.UtcNow,
+                        result.IsVerified, result.CatalogTimestampUtc)));
+            }
+            catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ScheduleSettingsUpdate(() => settingsViewModel.RecordUbisoftError(exception));
+                Logger.Error(exception, "Ubisoft+ catalog synchronization failed.");
+                if (!settings.PcGamePassEnabled) throw;
+            }
         }
-        catch (Exception exception)
-        {
-            ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
-            Logger.Error(exception, "Game Pass library synchronization failed.");
-            throw;
-        }
+        return metadata;
     }
 
     public override IEnumerable<Game> ImportGames(LibraryImportGamesArgs args)
     {
         var settings = CaptureSettings();
-        if (!settings.PcGamePassEnabled)
+        var ubisoftEnabled = settings.UbisoftPlusEnabled &&
+            UbisoftPlusProvider.Supports(settings.Region, settings.Language);
+        if (!settings.PcGamePassEnabled && !ubisoftEnabled)
         {
-            Logger.Info("Game Pass provider is disabled; existing library records were left unchanged.");
+            Logger.Info("No supported provider is enabled; library records were left unchanged.");
             return Array.Empty<Game>();
         }
 
-        try
+        var added = new List<Game>();
+        if (settings.PcGamePassEnabled)
         {
-            var result = SynchronizeAsync(
+            try
+            {
+                var result = SynchronizeAsync(
                     settings,
                     false,
                     settings.RefreshDuringLibraryUpdate,
                     args.CancelToken)
-                .GetAwaiter()
-                .GetResult();
-            EnsureSettingsUnchanged(settings);
-            return libraryReconciler.Reconcile(
-                result,
-                settings.GamePassCatalogSelection,
-                settings.GamePassPlanSelection,
-                settings.GamePassConsoleSelection,
-                settings.ExcludeConfirmedFreeToPlay,
-                settings.UnavailableGameHandling,
-                DateTimeOffset.UtcNow,
-                args.CancelToken);
+                    .GetAwaiter().GetResult();
+                EnsureSettingsUnchanged(settings);
+                added.AddRange(libraryReconciler.Reconcile(result,
+                    settings.GamePassCatalogSelection,
+                    settings.GamePassPlanSelection,
+                    settings.GamePassConsoleSelection,
+                    settings.ExcludeConfirmedFreeToPlay,
+                    settings.UnavailableGameHandling,
+                    DateTimeOffset.UtcNow, args.CancelToken));
+            }
+            catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
+                Logger.Error(exception, "Game Pass library synchronization failed.");
+                if (!ubisoftEnabled) throw;
+            }
         }
-        catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+        if (ubisoftEnabled)
         {
-            Logger.Info("Game Pass library synchronization was canceled.");
-            throw;
+            try
+            {
+                var result = SynchronizeUbisoftAsync(settings, false,
+                    settings.RefreshDuringLibraryUpdate, args.CancelToken)
+                    .GetAwaiter().GetResult();
+                EnsureSettingsUnchanged(settings);
+                added.AddRange(providerReconciler.Reconcile(result,
+                    settings.UbisoftPlusPlanSelection, settings.UnavailableGameHandling,
+                    DateTimeOffset.UtcNow, args.CancelToken));
+            }
+            catch (OperationCanceledException) when (args.CancelToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ScheduleSettingsUpdate(() => settingsViewModel.RecordUbisoftError(exception));
+                Logger.Error(exception, "Ubisoft+ catalog synchronization failed.");
+                if (!settings.PcGamePassEnabled) throw;
+            }
         }
-        catch (Exception exception)
-        {
-            ScheduleSettingsUpdate(() => settingsViewModel.RecordSyncError(exception));
-            Logger.Error(exception, "Game Pass library synchronization failed.");
-            throw;
-        }
+        return added;
     }
 
     public override ISettings GetSettings(bool firstRunSettings) => settingsViewModel;
@@ -212,7 +316,7 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         base.Dispose();
     }
 
-    private void ShowActiveGamePassGames()
+    private void ShowActiveSubscriptionGames()
     {
         var activeTag = PlayniteApi.Database.Tags.FirstOrDefault(tag =>
             string.Equals(tag.Name, PlayniteGameMapper.ActiveAccessTag,
@@ -220,14 +324,14 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         if (activeTag is null)
         {
             PlayniteApi.Dialogs.ShowMessage(
-                "There are no active Game Pass entries yet. Update the library or use Refresh and Apply.",
+                "There are no active subscription entries yet. Update the library or use Refresh and Apply.",
                 "Subscription Libraries");
             return;
         }
 
         PlayniteApi.MainView.ApplyFilterPreset(new FilterPreset
         {
-            Name = "Active Game Pass",
+            Name = "Active subscription games",
             Settings = new FilterPresetSettings
             {
                 UseAndFilteringStyle = true,
@@ -285,6 +389,80 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         }
     }
 
+    private bool CanOpenUbisoftInstallPage(Game game)
+    {
+        if (game.PluginId != Id || game.IsInstalled ||
+            !settingsViewModel.Settings.UbisoftPlusEnabled ||
+            !UbisoftPlusProvider.Supports(settingsViewModel.Settings.Region,
+                settingsViewModel.Settings.Language) ||
+            !TryGetUbisoftPage(game, out _) || game.TagIds is null)
+        {
+            return false;
+        }
+
+        var tagIds = new HashSet<Guid>(game.TagIds);
+        return PlayniteApi.Database.Tags.Any(tag =>
+            tagIds.Contains(tag.Id) &&
+            string.Equals(tag.Name, PlayniteGameMapper.ActiveAccessTag,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryGetUbisoftPage(Game game, out Uri? page)
+    {
+        page = null;
+        var gameId = game.GameId;
+        if (gameId?.StartsWith(UbisoftPlusProvider.GameIdPrefix,
+                StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return false;
+        }
+        var productId = gameId.Substring(UbisoftPlusProvider.GameIdPrefix.Length);
+        if (productId.Length != 24 || !productId.All(Uri.IsHexDigit))
+        {
+            return false;
+        }
+        foreach (var link in game.Links ?? Enumerable.Empty<Link>())
+        {
+            if (link.Name != "Ubisoft Store" ||
+                !Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps ||
+                !string.Equals(uri.Host, "store.ubisoft.com", StringComparison.OrdinalIgnoreCase) ||
+                !uri.AbsolutePath.StartsWith("/us/", StringComparison.OrdinalIgnoreCase) ||
+                uri.AbsolutePath.IndexOf(productId, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+            page = uri;
+            return true;
+        }
+        return false;
+    }
+
+    private void OpenUbisoftInstallPage(Game game)
+    {
+        if (!CanOpenUbisoftInstallPage(game) || !TryGetUbisoftPage(game, out var page))
+        {
+            PlayniteApi.Dialogs.ShowMessage(
+                "This Ubisoft+ PC game has no verified install page. Refresh its catalog and try again.",
+                "Ubisoft+ install page unavailable");
+            return;
+        }
+        try
+        {
+            using var launched = Process.Start(new ProcessStartInfo(page!.AbsoluteUri)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, $"Could not open the Ubisoft Store page for {game.GameId}.");
+            PlayniteApi.Dialogs.ShowErrorMessage(
+                $"Could not open the Ubisoft Store product page.\n\n{exception.Message}",
+                "Ubisoft+ install page unavailable");
+        }
+    }
+
     private async Task RefreshAndApplyFromMenuAsync()
     {
         try
@@ -297,6 +475,21 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
             Logger.Error(exception, "Game Pass refresh and apply failed.");
             PlayniteApi.Dialogs.ShowErrorMessage(exception.Message,
                 "Game Pass refresh and apply failed");
+        }
+    }
+
+    private async Task RefreshUbisoftFromMenuAsync()
+    {
+        try
+        {
+            var message = await RefreshUbisoftAndApplyAsync();
+            PlayniteApi.Dialogs.ShowMessage(message, "Subscription Libraries");
+        }
+        catch (Exception exception)
+        {
+            Logger.Error(exception, "Ubisoft+ refresh and apply failed.");
+            PlayniteApi.Dialogs.ShowErrorMessage(exception.Message,
+                "Ubisoft+ refresh and apply failed");
         }
     }
 
@@ -395,6 +588,49 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         return $"Game Pass catalog applied. {added.Count:N0} new entries were imported.";
     }
 
+    internal async Task<string> RefreshUbisoftAndApplyAsync()
+    {
+        if (!settingsViewModel.VerifySettings(out var errors))
+        {
+            throw new ArgumentException(string.Join(" ", errors));
+        }
+        var settings = CaptureSettings();
+        if (!settings.UbisoftPlusEnabled ||
+            !UbisoftPlusProvider.Supports(settings.Region, settings.Language))
+        {
+            throw new InvalidOperationException(
+                "Enable Ubisoft+ while using the verified US / en-US catalog.");
+        }
+
+        var result = await SynchronizeUbisoftAsync(settings, true, true, CancellationToken.None);
+        EnsureSettingsUnchanged(settings);
+        if (!result.IsVerified)
+        {
+            throw new InvalidOperationException(
+                "Ubisoft's catalog could not be verified. The previous cache remains available, " +
+                "but no library changes were applied. " + result.Warning);
+        }
+
+        settingsViewModel.RecordUbisoftSyncResult(result, settings);
+        var preview = (settingsViewModel.IsEditing
+            ? "Applying will also save the current settings, even if you later cancel this settings dialog.\n\n"
+            : string.Empty) + providerReconciler.Preview(result,
+            settings.UbisoftPlusPlanSelection, settings.UnavailableGameHandling);
+        if (PlayniteApi.Dialogs.ShowMessage(preview,
+                "Ubisoft+ - Refresh and Apply", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return "Catalog refreshed; Playnite library changes were canceled.";
+        }
+
+        EnsureSettingsUnchanged(settings);
+        settingsViewModel.CommitAppliedSettings();
+        var added = providerReconciler.Reconcile(result,
+            settings.UbisoftPlusPlanSelection, settings.UnavailableGameHandling,
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        return $"Ubisoft+ PC catalog applied. {added.Count:N0} new entries were imported.";
+    }
+
     private async Task<SubscriptionSyncResult> SynchronizeAsync(
         SubscriptionLibrariesSettings settings,
         bool forceRefresh,
@@ -467,6 +703,42 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         }
     }
 
+    private async Task<SubscriptionSyncResult> SynchronizeUbisoftAsync(
+        SubscriptionLibrariesSettings settings,
+        bool forceRefresh,
+        bool refreshFromNetwork,
+        CancellationToken cancellationToken)
+    {
+        if (!settings.UbisoftPlusEnabled ||
+            !UbisoftPlusProvider.Supports(settings.Region, settings.Language))
+        {
+            throw new InvalidOperationException(
+                "Ubisoft+ PC is available only for the verified US / en-US catalog.");
+        }
+
+        await synchronizationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var provider = new UbisoftPlusProvider(httpClientService);
+            var result = await syncService.SynchronizeAsync(provider,
+                new SubscriptionSyncOptions
+                {
+                    Region = settings.Region,
+                    Language = settings.Language,
+                    CacheLifetime = TimeSpan.FromHours(settings.CacheDurationHours),
+                    CatalogConfigurationKey = "ubisoft-plus-pc-us-en-US-v1",
+                    ForceRefresh = forceRefresh,
+                    RefreshFromNetwork = refreshFromNetwork
+                }, cancellationToken).ConfigureAwait(false);
+            ScheduleSettingsUpdate(() => settingsViewModel.RecordUbisoftSyncResult(result, settings));
+            return result;
+        }
+        finally
+        {
+            synchronizationLock.Release();
+        }
+    }
+
     private SubscriptionLibrariesSettings CaptureSettings()
     {
         var dispatcher = PlayniteApi.MainView.UIDispatcher;
@@ -483,13 +755,15 @@ public sealed class SubscriptionLibrariesPlugin : LibraryPlugin
         if (!unchanged)
         {
             throw new InvalidOperationException(
-                "Game Pass settings changed during the catalog operation. Run the update again with the current settings.");
+                "Subscription settings changed during the catalog operation. Run the update again with the current settings.");
         }
     }
 
     private static bool SameOperationSettings(
         SubscriptionLibrariesSettings left, SubscriptionLibrariesSettings right) =>
         left.PcGamePassEnabled == right.PcGamePassEnabled &&
+        left.UbisoftPlusEnabled == right.UbisoftPlusEnabled &&
+        left.UbisoftPlusPlanSelection == right.UbisoftPlusPlanSelection &&
         left.GamePassCatalogSelection == right.GamePassCatalogSelection &&
         left.GamePassPlanSelection == right.GamePassPlanSelection &&
         left.GamePassConsoleSelection == right.GamePassConsoleSelection &&

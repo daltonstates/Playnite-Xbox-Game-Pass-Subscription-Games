@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using Newtonsoft.Json;
 using SubscriptionLibraries.Core.Providers.GamePass;
+using SubscriptionLibraries.Core.Providers.UbisoftPlus;
 using SubscriptionLibraries.Core.Services;
 
 namespace SubscriptionLibraries.CatalogTool;
@@ -17,7 +18,8 @@ internal static class Program
 
         try
         {
-            var command = CommandLineOptions.Parse(args);
+            var ubisoftUs = args.Length == 1 && args[0] == "--ubisoft-us";
+            var command = ubisoftUs ? null : CommandLineOptions.Parse(args);
             using var cancellation = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
             {
@@ -32,14 +34,26 @@ internal static class Program
             httpClient.DefaultRequestHeaders.UserAgent.Add(
                 new ProductInfoHeaderValue("SubscriptionLibraries.CatalogTool", "1.0"));
             var logger = new ConsoleSubscriptionLogger();
+            var transport = new HttpClientService(httpClient, logger);
+            if (ubisoftUs)
+            {
+                var snapshot = await new UbisoftPlusProvider(transport)
+                    .GetCatalogSnapshotAsync(cancellation.Token).ConfigureAwait(false);
+                Console.WriteLine($"Ubisoft+ US/en-US: {snapshot.Games.Count} verified PC games; " +
+                    $"{snapshot.IncompleteProductIds.Count} ambiguous products excluded.");
+                Console.WriteLine($"Classics: {snapshot.Games.Count(game =>
+                    game.PlanPlatforms.ContainsKey(UbisoftPlusProvider.ClassicsPlan))}; " +
+                    $"Premium: {snapshot.Games.Count(game =>
+                    game.PlanPlatforms.ContainsKey(UbisoftPlusProvider.PremiumPlan))}");
+                return 0;
+            }
             var options = new GamePassProviderOptions
             {
-                Region = command.Region,
+                Region = command!.Region,
                 Language = command.Language,
                 SiglId = command.SiglId,
                 ConsoleSiglId = command.ConsoleSiglId
             }.NormalizeAndValidate();
-            var transport = new HttpClientService(httpClient, logger);
             var provider = new GamePassProvider(
                 new GamePassCatalogClient(transport, options),
                 new MicrosoftStoreCatalogClient(transport, options, logger),
@@ -178,6 +192,7 @@ internal static class Program
 
     private static void PrintHelp()
     {
+        Console.WriteLine("  --ubisoft-us          Check the verified US/en-US Ubisoft+ PC catalog");
         Console.WriteLine("Fetch and diagnose the live Game Pass plan and platform catalogs.");
         Console.WriteLine();
         Console.WriteLine("Usage:");

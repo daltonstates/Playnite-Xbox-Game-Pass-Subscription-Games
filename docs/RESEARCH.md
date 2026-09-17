@@ -110,13 +110,25 @@ Microsoft currently exposes collection `b8900d09-a491-44cc-916e-32b5acae621b`, w
 - 66 had explicit Xbox-only evidence;
 - 29 passed the same basic desktop signal test, but that set included obvious Xbox-specific SKUs such as names ending in `Xbox One` and `Xbox Series X|S`.
 
-The display catalog's storefront availability data is therefore not strong enough to derive a reliable EA Play **PC** subset from this mixed collection. No `EAPlayProvider` is shipped. Adding one would create false subscription records, which is worse than leaving the provider unavailable.
+The display catalog's storefront availability data is therefore not strong enough to derive a reliable EA Play **PC** subset from this mixed collection. No `EAPlayProvider` is shipped.
+
+On 2026-09-17, a separate check of [EA's own Play List](https://www.ea.com/ea-play/games?isLocalized=true) found distinct EA app / EA Play, EA Play Pro, Xbox, PlayStation, Steam, and Epic Games Store tabs. The page exposes per-platform totals and game cards, and a sampled pagination request returned additional cards. This makes a direct EA Play PC provider plausible; the Microsoft collection is not the only possible source. Before enabling one, verify that every page can be fetched consistently for the selected region, identify stable game IDs and install-page links, and confirm which tier each card belongs to.
+
+## Ubisoft+ investigation
+
+On 2026-09-17, the [official Ubisoft+ catalog](https://store.ubisoft.com/us/ubisoftplus/games?lang=en_US) exposed a client-readable regional product index. A live US/en-US query returned 185 subscription products in one complete response (`nbPages=1`, `nbHits=185`, 185 hits). Every hit had a unique 24-character product ID and a Ubisoft Store link. Four products had no tier label; one was DLC and one was a preorder. The shipped PC provider imports the remaining 179 games: 62 labeled Classics and 143 labeled Premium, with overlap. Sample product links returned HTTP 200. Product types were 184 Games and one DLC; no separate trial type appeared. An unfamiliar type, including a future trial type, fails verification until its membership is established. The source is an undocumented storefront interface, so each refresh checks the page configuration, response completeness, product IDs, tiers, platform, and links; failures preserve the last cache without cleanup. Only US/en-US is enabled. `anywherePlatforms=xbox` is not treated as proof of Xbox subscription membership, and no console option is shown.
+
+## Other EA Play storefronts
+
+The [Epic EA Play Included Games list](https://store.epicgames.com/subscription-benefits/ea-play/included?count=40&lang=en-US&sortBy=releaseDate&sortDir=DESC&start=0) has two visible pages in an indexed browser view, but a direct unauthenticated request from the plugin environment returned Cloudflare HTTP 403 on 2026-09-17. It cannot be a reliable Playnite feed in this state. The [EA Play List](https://www.ea.com/ea-play/games?isLocalized=true) advertises six storefront and platform tabs, but direct pagination returned page 2 and then HTTP 500 for page 3 of a 77-item EA app catalog. Complete traversal is unverified, so EA app, Pro, Steam, Epic, Xbox, and PlayStation remain out of settings. Steam curator pages mix recommendations and nonincluded titles; Microsoft's EA Play collection mixes platform products. Neither is a verified substitute for a complete per-storefront membership list. PlayStation's subscription page displays only a selection of titles without a verified full feed. Ubisoft+ Xbox and PlayStation membership and store product links also remain unverified.
 
 ## Amazon Luna investigation
 
 Amazon's current public pages and Luna terms confirm that Prime/Luna Standard provides a rotating subscription catalog and that Luna Premium has an expanded catalog. No stable, documented, unauthenticated catalog API was found that distinguishes the current Standard/Prime and Premium entitlements by region.
 
-The interactive Luna experience is personalized and may require Amazon session state. Reusing private browser tokens or scraping its rendered HTML would violate this project's reliability and privacy constraints. No Luna provider is shipped until Amazon offers a suitable structured public source.
+The interactive Luna experience may require Amazon session state. An unauthenticated 2026-09-17 fetch of its public browse page did not include a usable game list. Reusing private browser tokens would violate this project's privacy constraints. No Luna cloud provider is shipped without a verified complete source for current tier and regional membership.
+
+[Amazon's September 2026 content update](https://www.amazongamestudios.com/en-us/news/articles/luna-september-2026) separately names downloadable PC games that Prime members can claim, including their dates and stores. The active [MercuryBot Luna source](https://github.com/5okin/MercuryBot/blob/main/stores/luna.py) also queries Amazon's `FREE_GAMES` collection, but obtains a browser session and CSRF token first. These promotions are different from the Luna Standard and Premium cloud libraries: after a claim, the game belongs to the relevant store account. Luna cloud and Prime claims are not listed in settings.
 
 Relevant official references:
 

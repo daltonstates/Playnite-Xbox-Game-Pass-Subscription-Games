@@ -124,6 +124,14 @@ public sealed class SubscriptionSyncService
                 new Dictionary<string, SubscriptionGame>(StringComparer.OrdinalIgnoreCase);
             var previousRemoved = cache?.Envelope.RemovedGames ?? new List<SubscriptionGame>();
 
+            if (snapshot.RejectMissingPlansForPreviouslyActiveGames &&
+                snapshot.IncompleteProductIds.Any(previousActive.ContainsKey))
+            {
+                throw new CatalogDataException(
+                    $"{provider.Name} lost the plan label for a previously active game; " +
+                    "the previous cache was preserved.");
+            }
+
             var incompleteIds = new HashSet<string>(
                 snapshot.IncompleteProductIds.Where(id => !string.IsNullOrWhiteSpace(id)),
                 StringComparer.OrdinalIgnoreCase);

@@ -54,7 +54,8 @@ internal sealed class PlayniteLibraryReconciler
         var selectedIds = new HashSet<string>(
             selected.Select(game => game.ProviderGameId), StringComparer.OrdinalIgnoreCase);
         var owned = playniteApi.Database.Games
-            .Where(game => game.PluginId == plugin.Id).ToList();
+            .Where(game => game.PluginId == plugin.Id &&
+                !SubscriptionGameIds.IsNamespaced(game.GameId)).ToList();
         var ownedIds = new HashSet<string>(
             owned.Where(game => !string.IsNullOrWhiteSpace(game.GameId))
                 .Select(game => game.GameId), StringComparer.OrdinalIgnoreCase);
@@ -126,7 +127,8 @@ internal sealed class PlayniteLibraryReconciler
             catalogGames.Select(game => game.ProviderGameId),
             StringComparer.OrdinalIgnoreCase);
         var ownedGames = playniteApi.Database.Games
-            .Where(game => game.PluginId == plugin.Id)
+            .Where(game => game.PluginId == plugin.Id &&
+                !SubscriptionGameIds.IsNamespaced(game.GameId))
             .ToList();
         var ownedByProviderId = ownedGames
             .Where(game => !string.IsNullOrWhiteSpace(game.GameId))
@@ -336,7 +338,8 @@ internal sealed class PlayniteLibraryReconciler
     private void MarkCatalogUnverified(CancellationToken cancellationToken)
     {
         var owned = playniteApi.Database.Games
-            .Where(game => game.PluginId == plugin.Id).ToList();
+            .Where(game => game.PluginId == plugin.Id &&
+                !SubscriptionGameIds.IsNamespaced(game.GameId)).ToList();
         if (owned.Count == 0)
         {
             return;

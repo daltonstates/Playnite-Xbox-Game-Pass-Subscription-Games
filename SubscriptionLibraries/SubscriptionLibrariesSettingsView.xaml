@@ -12,11 +12,11 @@
                        FontSize="20"
                        FontWeight="SemiBold"
                        Margin="0,0,0,4" />
-            <TextBlock Text="Import temporary subscription access as separate Playnite library entries. No Microsoft sign-in is required."
+            <TextBlock Text="Import temporary subscription access as separate Playnite library entries. No store sign-in is required by this extension."
                        TextWrapping="Wrap"
                        Margin="0,0,0,16" />
 
-            <TextBlock Text="Choose your plan and PC/Xbox view independently. Entries outside your selection can be marked, hidden, or cleaned up. This does not verify your personal subscription."
+            <TextBlock Text="Choose your Game Pass plan and PC/Xbox view, and optionally a Ubisoft+ PC plan. Entries outside your selection can be marked, hidden, or cleaned up. This does not verify your personal subscription."
                        TextWrapping="Wrap"
                        Margin="0,0,0,14" />
 
@@ -29,15 +29,31 @@
                     <TextBlock Text="Plan and platform filters use Microsoft's regional public catalog. They do not check your Microsoft account."
                                TextWrapping="Wrap"
                                Margin="22,5,0,4" />
-                    <CheckBox Content="EA Play (source not reliable enough yet)"
-                              IsEnabled="False"
-                              Margin="22,6,0,0" />
-                    <CheckBox Content="Amazon Luna / Prime (source not available yet)"
-                              IsEnabled="False"
-                              Margin="22,4,0,0" />
-                    <CheckBox Content="Ubisoft+ (future provider)"
-                              IsEnabled="False"
-                              Margin="22,4,0,0" />
+                    <StackPanel Visibility="{Binding UbisoftPlusRegionVisibility}"
+                                Margin="0,10,0,0">
+                        <CheckBox Content="Ubisoft+ PC catalog"
+                                  IsChecked="{Binding Settings.UbisoftPlusEnabled}"
+                                  FontWeight="SemiBold" />
+                        <TextBlock Text="Uses Ubisoft's US catalog. Choose the subscription shown in Ubisoft Connect; this does not check your account."
+                                   TextWrapping="Wrap" Margin="22,5,0,6" />
+                        <ComboBox ItemsSource="{Binding UbisoftPlans}"
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding Settings.UbisoftPlusPlanSelection}"
+                                  Width="230" HorizontalAlignment="Left" Margin="22,0,0,7" />
+                        <TextBlock Text="{Binding UbisoftSynchronizationDisplay}"
+                                   Margin="22,0,0,3" />
+                        <TextBlock Text="{Binding UbisoftErrorDisplay}"
+                                   TextWrapping="Wrap" Margin="22,0,0,7" />
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
+                            <Button Content="Refresh and Apply Ubisoft+..."
+                                    Command="{Binding RefreshUbisoftNowCommand}"
+                                    Padding="10,4" />
+                            <TextBlock Text="{Binding UbisoftRefreshStatus}"
+                                       Margin="12,4,0,0" TextWrapping="Wrap"
+                                       MaxWidth="350" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
             </GroupBox>
 
@@ -65,7 +81,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Subscription plan" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Game Pass plan" VerticalAlignment="Center" Margin="0,0,12,8" />
                     <ComboBox Grid.Row="0" Grid.Column="1"
                               ItemsSource="{Binding GamePassPlans}"
                               DisplayMemberPath="DisplayName"
@@ -135,7 +151,7 @@
                               Margin="0,10,0,6" />
 
                     <TextBlock Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="2"
-                               Text="Applies only to this extension's entries when a game leaves Game Pass or falls outside your selected plan/platform. Removal permanently discards that Playnite entry and any edits, but never touches games owned through other libraries. Played/installed entries are hidden; a stale catalog never triggers deletion."
+                               Text="Applies only to this extension's entries for the affected provider when a game leaves its catalog or falls outside your selected plan/platform. Removal permanently discards that Playnite entry and any edits, but never touches games owned through other libraries. Played/installed entries are hidden; a stale catalog never triggers deletion."
                                TextWrapping="Wrap" Margin="0,2,0,0" />
 
                     <CheckBox Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2"
@@ -152,7 +168,7 @@
                               SelectedValue="{Binding Settings.PreferredInstallApp}"
                               Margin="0,12,0,6" />
                     <TextBlock Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2"
-                               Text="The game menu opens an eligible PC game's page in this app. Start the download there."
+                               Text="Playnite's Install command or the game menu opens an eligible PC game's page in this app. Start the download there."
                                TextWrapping="Wrap" />
                 </Grid>
             </GroupBox>
@@ -192,7 +208,7 @@
                                TextWrapping="Wrap" />
 
                     <StackPanel Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal">
-                        <Button Content="Refresh and Apply..."
+                        <Button Content="Refresh and Apply Game Pass..."
                                 Command="{Binding RefreshNowCommand}"
                                 MinWidth="110"
                                 Padding="10,4" />

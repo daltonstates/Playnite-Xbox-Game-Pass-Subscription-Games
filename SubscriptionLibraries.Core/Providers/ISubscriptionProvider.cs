@@ -30,6 +30,10 @@ public sealed class SubscriptionCatalogSnapshot
 {
     public bool LeavingSoonStatusKnown { get; set; } = true;
 
+    // Providers with explicit plan labels can reject a refresh when a game that
+    // was previously importable loses its tier, instead of hiding/removing it.
+    public bool RejectMissingPlansForPreviouslyActiveGames { get; set; }
+
     public IReadOnlyCollection<SubscriptionGame> Games { get; set; } =
         Array.Empty<SubscriptionGame>();
 

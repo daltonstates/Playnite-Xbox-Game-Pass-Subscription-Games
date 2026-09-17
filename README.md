@@ -1,29 +1,30 @@
 # Subscription Libraries for Playnite
 
-**Browse Game Pass games beside the games you own in Playnite.** Choose a Game Pass plan and a PC or Xbox view, then update your library. The extension adds separate, clearly labeled catalog entries so you can search, filter, and discover games available through that subscription.
+**Browse Game Pass and Ubisoft+ PC catalogs beside the games you own in Playnite.** Choose your plan and update your library. The extension adds separate, clearly labeled catalog entries for subscription discovery.
 
-These entries represent **regional catalog availability**, not games you own or proof that your Microsoft account can play them. The extension does not sign in to Microsoft, download or track installed games, or change records from your other Playnite libraries.
+These entries represent **regional catalog availability**, not games you own or proof that your account can play them. The extension does not sign in to a store, download or track installed games, or change records from your other Playnite libraries.
 
 For example, if you own a game on Steam and it also appears in Game Pass, Playnite can show both entries. If it later leaves Game Pass, only this extension's Game Pass entry changes; your Steam entry stays as it was.
 
 ## What it does
 
 - Imports PC and Xbox console Game Pass catalog games as separate, uninstalled entries with a **Game Pass** source, subscription tags, a Microsoft Store link, and available artwork and metadata.
+- Optionally imports the verified US/en-US **Ubisoft+ PC** catalog with separate Classics and Premium selection. It excludes products without a clear tier, DLC, preorders, and unavailable products.
 - Lets you choose a plan, PC or Xbox platforms, Xbox One or Series X|S generations, and a region. The default for new settings is **Xbox Game Pass Ultimate / PC games / United States**.
 - Marks games that are leaving soon, have left the catalog, or no longer match your selected view. Newly detected additions can receive a temporary **Recently Added to Game Pass** tag.
-- Offers a **Show active Game Pass games** menu filter, a per-game **Check Game Pass availability** action, and a **Refresh and Apply** action that previews library changes.
-- Opens an eligible PC game's product page from its Playnite right-click menu. Choose the Xbox app (default) or Microsoft Store once in settings, then choose **Install** in that app.
+- Offers a **Show active subscription games** menu filter, a per-game **Check Game Pass availability** action, and provider-specific **Refresh and Apply** actions that preview library changes.
+- Opens an eligible PC game's product page from Playnite's **Install** button or right-click menu. Choose the Xbox app (default) or Microsoft Store once in settings, then choose **Install** in that app.
 
-Game Pass is the only enabled provider. Selecting **All catalogs** is useful for discovery, but it ignores plan membership and does not describe what your own subscription grants.
+Ubisoft+ appears only when **Region = US** and **Language = en-US**. Other Ubisoft+ regions, EA Play storefronts, and Luna remain absent until their full catalogs and product links can be verified. Selecting **All catalogs** is useful for discovery, but it ignores plan membership and does not describe what your own subscription grants.
 
 ## Get started
 
 This project is not yet in Playnite's add-on browser. Build a `.pext` package from source using [Build and package from source](#build-and-package-from-source), or use a package you already have.
 
 1. Open the `.pext` file with Playnite, confirm installation, and restart Playnite.
-2. Open **Add-ons > Extension settings > Libraries > Subscription Libraries - Game Pass**.
+2. Open **Add-ons > Extension settings > Libraries > Subscription Libraries**.
 3. Leave Game Pass enabled. Choose your plan, the PC/Xbox games to show, and an Xbox generation if your view includes console games. Choose a region and language if the defaults do not fit you, then save.
-4. Run **Update Game Library** and select **Subscription Libraries - Game Pass**.
+4. To add Ubisoft+ PC, use US/en-US, enable it in the same settings page, and choose Classics or Premium. Save, then run **Update Game Library** for **Subscription Libraries**.
 
 Your plan and platform choices are independent. **PC Game Pass + Xbox-only** and **legacy Xbox Game Pass for Console + PC-only** produce empty views. The settings page points out these combinations and disables the Xbox generation control when it cannot affect the view.
 
@@ -37,9 +38,11 @@ Use **Refresh and Apply...** in the extension settings or the Playnite **Subscri
 
 The settings page shows the last checked game count with the plan, platform, region, language, and catalog verification time used to calculate it. After changing settings, refresh or update the library to get a count for the new view.
 
-The **Show active Game Pass games** menu item temporarily filters Playnite to active entries from this extension. Right-click a single game and choose **Check Game Pass availability** for likely matches in your selected view. Title matches are suggestions; the extension does not merge records.
+The **Show active subscription games** menu item temporarily filters Playnite to active entries from this extension. Right-click a single game and choose **Check Game Pass availability** for likely matches in your selected Game Pass view. Title matches are suggestions; the extension does not merge records.
 
-Under **Preferred install app** in extension settings, choose **Xbox app** (default) or **Microsoft Store**. For an active Game Pass entry with PC access, right-click and use the single install-page action, which names your selected app. The app opens the game's product page; you sign in and start the installation there. If that app is unavailable, change the preference. Console-only and unavailable entries do not offer this action. The extension does not start the download, detect when it finishes, or change the catalog entry's installed status. Your installed game may appear separately through Playnite's Xbox integration.
+Under **Preferred install app** in extension settings, choose **Xbox app** (default) or **Microsoft Store**. For an active Game Pass entry with PC access, use Playnite's **Install** button, right-click **Install**, or the **Subscription Libraries > Open ... page to install** action. The app opens the game's product page; you sign in and start the installation there. If that app is unavailable, change the preference. Console-only and unavailable entries do not offer this handoff. Playnite returns the catalog entry to **Not installed** after opening the page because the extension cannot verify the download or completion. Your installed game may appear separately through Playnite's Xbox integration.
+
+For an active Ubisoft+ PC entry, those Install actions open its Ubisoft Store product page. Sign in to Ubisoft Connect and start the download there. The extension does not claim the game is installed after opening the page.
 
 ## Understand availability
 
@@ -56,7 +59,7 @@ Leaving Soon warnings come from the PC Game Pass feed for PC games and the Ultim
 
 ### Choose what happens to unavailable entries
 
-This setting applies only to entries owned by this extension when a game leaves Game Pass or falls outside your selected view:
+This setting applies only to entries owned by this extension, scoped to the affected provider, when a game leaves its catalog or falls outside your selected view:
 
 | Setting | Result |
 | --- | --- |
@@ -69,6 +72,8 @@ The extension does not delete entries based on an unverified catalog. It also le
 ## What the catalog can and cannot tell you
 
 The extension reads Microsoft's public regional Game Pass collections and Store product metadata. It uses Microsoft product IDs to track entries and requires Windows evidence before labeling a game as available on PC. PC and console editions can have different IDs, so similar titles may appear as separate entries.
+
+For Ubisoft+ PC, the extension reads Ubisoft's public US/en-US subscription catalog. Classics and Premium membership follows each product's explicit catalog label; the extension does not infer Xbox or PlayStation access from a PC product. Ubisoft+ game IDs are namespaced so a Ubisoft refresh cannot change an existing Game Pass entry.
 
 It does **not** check your account, subscription payment, family sharing, trials, purchases, or personal entitlements. A catalog listing can include a free-to-play game or a game with plan-specific benefits; it does not prove that payment is required to play it. The optional free-to-play filter excludes only titles with clear zero-price evidence and leaves ambiguous ones visible. The install-page links are a handoff to Microsoft apps, not a Playnite-managed installation or game launch action.
 
@@ -83,6 +88,7 @@ Catalog requests send the selected market, language, public collection IDs, and 
 - **Catalog unverified or refresh failed:** Check the last error in settings and Playnite's logs. The old catalog remains visible, but library changes wait for a successful verification. Use **Refresh and Apply...** when connectivity returns.
 - **A game is missing from your view:** Check the region, plan, platform, and Xbox generation. You can use the [catalog diagnostic tool](#catalog-diagnostic-tool) to inspect current source data.
 - **The wrong country's catalog appears:** Set both Region and Language, save, then use **Refresh and Apply...**. Caches are separate by market and language.
+- **Ubisoft+ is missing from settings:** Its catalog is currently verified only for Region **US** and Language **en-US**. Set both to those values to display the option.
 
 ## Build and package from source
 
@@ -120,6 +126,8 @@ dotnet run --project .\SubscriptionLibraries.CatalogTool -- --region US --langua
 ```
 
 Run it with `--help` for plan, platform, Xbox generation, rejected-product, JSON output, and advanced catalog ID options. The output includes selected-view counts, platform evidence, and missing metadata; live numbers change over time.
+
+For the verified Ubisoft+ PC feed, run `dotnet run --project .\SubscriptionLibraries.CatalogTool -- --ubisoft-us`. It checks full source pagination and reports the accepted Classics and Premium counts without changing Playnite.
 
 ## License
 
